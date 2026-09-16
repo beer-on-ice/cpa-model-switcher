@@ -218,7 +218,7 @@ No. WebDAV upload occurs after local configuration and snapshot storage. The loc
 
 ## Logo
 
-`assets/logo.svg` is an original vector mark drawn for this project. It combines a gradient tile, a `C`, and a model-switching arrow without using third-party trademarks or downloaded artwork.
+`assets/logo.svg` was redesigned by `gemini-3.8-flash-high` through the configured CPA. The concept is a dual-track routing matrix: two agent/model channels cross at a central gateway. It uses no third-party trademark or downloaded artwork, and the final SVG was reviewed and adjusted for small icon sizes.
 
 The Windows executable still uses the default Electron program icon. The SVG can later be converted into an ICO asset alongside Windows code signing.
 

@@ -267,7 +267,7 @@ git push origin main v0.6.0
 
 ## Logo
 
-`assets/logo.svg` 是为本项目绘制的原创矢量标志，由渐变方块、字母 `C` 与模型切换箭头组成；未使用第三方商标或网络素材。
+`assets/logo.svg` 由 CPA 中的 `gemini-3.8-flash-high` 根据项目功能重新设计，概念为“双轨路由矩阵”：两条代理/模型通道在中心网关交叉切换。设计未使用第三方商标或网络素材，最终 SVG 由项目侧审核并针对小尺寸显示进行了调整。
 
 当前 Windows EXE 仍使用 Electron 默认程序图标。后续可以基于此 SVG 生成 ICO，并加入 Windows 程序签名与图标资源。
 
