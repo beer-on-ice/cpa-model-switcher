@@ -2,9 +2,9 @@ const { app, BrowserWindow, ipcMain, safeStorage, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
-const { execFileSync } = require("node:child_process");
 const WebSocket = require("ws");
 const configService = require("./config-service.cjs");
+const codexProcessService = require("./codex-process-service.cjs");
 const webdavService = require("./webdav-service.cjs");
 
 let mainWindow;
@@ -52,11 +52,13 @@ function createWindow() {
             mainModel: workspace.main.model,
             bridgeReady: typeof window.cpaSwitcher?.listModels === 'function',
             roleBridgeReady: typeof window.cpaSwitcher?.createRole === 'function' && typeof window.cpaSwitcher?.updateRole === 'function',
-            roleUiReady: Boolean(document.querySelector('#addAgentButton') && document.querySelector('#roleModal'))
+            roleUiReady: Boolean(document.querySelector('#addAgentButton') && document.querySelector('#roleModal')),
+            restartBridgeReady: typeof window.cpaSwitcher?.restartCodex === 'function',
+            restartUiReady: Boolean(document.querySelector('#confirmApplyRestartButton'))
           };
         })()`);
         console.log(`SMOKE_RESULT ${JSON.stringify(result)}`);
-        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.agentCount >= 1 ? 0 : 2);
+        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.agentCount >= 1 ? 0 : 2);
       } catch (error) {
         console.error(`SMOKE_ERROR ${error.stack || error.message}`);
         app.exit(1);
@@ -362,21 +364,6 @@ async function testCompact(request = {}) {
   return { ok: response.ok, status: response.status, elapsedMs, detail: String(detail).slice(0, 500) };
 }
 
-function codexStatus() {
-  if (process.platform !== "win32") return { running: false, supported: false };
-  try {
-    const output = execFileSync("tasklist.exe", ["/FI", "IMAGENAME eq Codex.exe", "/FO", "CSV", "/NH"], {
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    const running = /"Codex\.exe"/i.test(output);
-    const pidMatch = output.match(/"Codex\.exe","(\d+)"/i);
-    return { running, supported: true, pid: pidMatch ? Number(pidMatch[1]) : null };
-  } catch {
-    return { running: false, supported: true };
-  }
-}
-
 function registerIpc() {
   ipcMain.handle("workspace:load", (_event, paths) => {
     const workspace = configService.loadWorkspace(paths || {});
@@ -385,7 +372,7 @@ function registerIpc() {
     return {
       ...workspace,
       settings: publicSettings(settings),
-      codex: codexStatus(),
+      codex: codexProcessService.codexStatus(),
       version: app.getVersion(),
     };
   });
@@ -464,7 +451,8 @@ function registerIpc() {
     shell.showItemInFolder(targetPath);
     return true;
   });
-  ipcMain.handle("system:codex-status", () => codexStatus());
+  ipcMain.handle("system:codex-status", () => codexProcessService.codexStatus());
+  ipcMain.handle("system:restart-codex", () => codexProcessService.restartCodex());
 }
 
 app.whenReady().then(() => {

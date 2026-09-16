@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld("cpaSwitcher", {
   restoreWebDavBackup: (request) => ipcRenderer.invoke("webdav:restore", request),
   openPath: (targetPath) => ipcRenderer.invoke("system:open-path", targetPath),
   codexStatus: () => ipcRenderer.invoke("system:codex-status"),
+  restartCodex: () => ipcRenderer.invoke("system:restart-codex"),
 });

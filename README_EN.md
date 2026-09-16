@@ -19,6 +19,7 @@ It runs as an independent Windows desktop application. Codex TOML files are modi
 ### Main-agent and subagent model switching
 
 - Change the Codex main-agent model and `model_reasoning_effort`.
+- Choose between saving only and applying with an automatic Codex restart; new chats reliably load the selected main model after restart.
 - Discover and manage `%USERPROFILE%\.codex\agents\*.toml`.
 - Click a role in the subagent matrix to inspect its purpose, use cases, model, reasoning effort, sandbox mode, and configuration path.
 - Create custom subagent roles, including the role TOML file and its `[agents.<role_id>]` registration in the main Codex configuration.
@@ -161,6 +162,7 @@ The test suite covers:
 - Snapshot archive creation and extraction.
 - Mock WebDAV directory creation, upload, listing, download, and restore.
 - Electron Renderer and Preload smoke tests.
+- Codex Desktop root-process detection, unrelated-process protection, and a mocked restart flow.
 
 Run:
 

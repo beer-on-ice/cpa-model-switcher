@@ -70,7 +70,6 @@
               <label class="wide"><span>CPA 地址</span><input id="baseUrl" placeholder="https://example.com/v1"></label>
               <label class="wide"><span>API Key</span><div class="input-action"><input id="apiKey" type="password" autocomplete="off" placeholder="已配置时可留空"><button id="toggleKeyButton">显示</button></div></label>
               <label><span>连接方式</span><select id="transportMode"><option value="auto">自动检测</option><option value="websocket">强制 WebSocket</option><option value="http">强制 HTTP 流式</option></select></label>
-              <label><span>保存行为</span><select id="restartMode"><option value="prompt">仅提示重启</option><option value="never">不提示重启</option></select></label>
             </div>
             <div class="settings-actions"><button id="saveProfileButton" class="btn primary">保存线路</button><button id="settingsTestButton" class="btn">测试此线路</button><button id="deleteProfileButton" class="btn danger">删除线路</button><button id="openConfigButton" class="btn ghost">打开 Codex 配置</button></div>
           </div>
@@ -87,13 +86,13 @@
           <div class="settings-actions"><button id="saveWebdavButton" class="btn primary">保存 WebDAV</button><button id="testWebdavButton" class="btn">测试连接</button><button id="uploadLatestButton" class="btn">上传最新本地备份</button></div>
           <div class="security-note">加密口令遗失后远程备份无法恢复。WebDAV 密码和加密口令均使用 Windows 安全存储保存。</div>
         </article>
-        <article class="card info"><h3>生效说明</h3><ul><li>新建任务会读取最新的主代理配置。</li><li>新派生的子代理会读取对应角色文件。</li><li>已经运行的任务可能继续使用启动时的模型。</li><li>WebSocket 设置通常需要重新打开任务或重启 Codex。</li></ul></article>
+        <article class="card info"><h3>生效说明</h3><ul><li>已经运行的对话不会中途切换模型。</li><li>“仅保存配置”不会打断 Codex，但运行中的 Codex 可能继续缓存旧配置。</li><li>“应用并重启 Codex”会关闭并重新启动 Codex，之后新建的对话可靠使用新模型。</li><li>自定义 CPA 模型在 Codex 模型栏中可能显示为“自定义”，实际模型以会话请求记录为准。</li></ul></article>
       </section>
     </main>
   </div>
   <footer class="status"><span id="statusText">正在读取配置……</span><div><span id="transportStatus">传输：--</span><span id="codexStatus">Codex：--</span><span id="backupStatus">备份：--</span></div></footer>
 </div>
-<div id="confirmModal" class="modal-bg hidden"><div class="modal"><h3>确认应用配置</h3><p>即将写入以下更改，并自动创建恢复快照。</p><div id="changePreview" class="change-preview"></div><label class="check modal-check"><input id="confirmRestartHint" type="checkbox" checked>保存后提示重新打开 Codex 任务</label><div class="modal-actions"><button id="cancelApplyButton" class="btn ghost">取消</button><button id="confirmApplyButton" class="btn primary">确认写入</button></div></div></div>
+<div id="confirmModal" class="modal-bg hidden"><div class="modal"><h3>确认应用配置</h3><p>即将写入以下更改，并自动创建恢复快照。</p><div id="changePreview" class="change-preview"></div><div class="security-note">当前对话不会热切换模型。选择“应用并重启 Codex”后，正在进行的 Codex 任务会被中断；重启后请新建对话。</div><div class="modal-actions"><button id="cancelApplyButton" class="btn ghost">取消</button><button id="confirmApplyButton" class="btn">仅保存配置</button><button id="confirmApplyRestartButton" class="btn primary">应用并重启 Codex</button></div></div></div>
 <div id="roleModal" class="modal-bg hidden"><div class="modal role-modal">
   <div class="role-modal-head"><div><h3 id="roleModalTitle">角色详情</h3><p id="roleModalSubtitle">查看或调整这个子代理的职责与运行配置。</p></div><button id="closeRoleButton" class="icon-button" aria-label="关闭">×</button></div>
   <div id="roleGuide" class="role-guide"></div>

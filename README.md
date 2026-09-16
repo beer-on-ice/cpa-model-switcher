@@ -19,6 +19,7 @@
 ### 主代理与子代理模型切换
 
 - 切换 Codex 主代理的模型和 `model_reasoning_effort`。
+- 提供“仅保存配置”和“应用并重启 Codex”两种应用方式；自动重启后，新建对话可靠读取所选主模型。
 - 扫描并管理 `%USERPROFILE%\.codex\agents\*.toml`。
 - 在子代理矩阵中点击角色名称，查看中文用途、适用场景、模型、推理强度、沙箱模式和配置文件位置。
 - 新增自定义子代理角色，并自动创建角色 TOML、注册主配置中的 `[agents.<角色标识>]` 区块。
@@ -161,6 +162,7 @@ release/CPA-Model-Switcher-<version>-x64.exe
 - 快照压缩与解压。
 - 模拟 WebDAV 建目录、上传、远程列表、下载和恢复。
 - Electron Renderer 与 Preload 冒烟测试。
+- Codex Desktop 主进程识别、误识别防护和模拟重启流程。
 
 运行：
 

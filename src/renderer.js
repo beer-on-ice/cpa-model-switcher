@@ -166,10 +166,20 @@ function changePreview(){
   return lines.length?lines.join(""):'<div class="muted">连接或传输配置将被更新。</div>'
 }
 
-async function applyChanges(){
-  $("#confirmApplyButton").disabled=true;setStatus("正在创建备份并写入配置……");
-  try{const result=await window.cpaSwitcher.applyConfiguration(gatherPayload());$("#confirmModal").classList.add("hidden");if(result.webdav?.ok)showToast(`配置已保存，WebDAV 加密备份已上传：${result.webdav.fileName}`,"success");else if(result.webdav&&!result.webdav.ok)showToast(`配置已保存，但 WebDAV 上传失败：${result.webdav.error}`,"error");else showToast(`配置写入成功，备份：${result.snapshot.id}`,"success");await loadWorkspace();if($("#confirmRestartHint").checked&&state.workspace.codex.running)showToast("Codex 正在运行；新任务会使用新配置，当前任务可能需要重新打开。")}
-  catch(error){showToast(error.message,"error");setStatus(`写入失败：${error.message}`)}finally{$("#confirmApplyButton").disabled=false}
+async function applyChanges(restart=false){
+  const saveButton=$("#confirmApplyButton"),restartButton=$("#confirmApplyRestartButton");saveButton.disabled=true;restartButton.disabled=true;setStatus("正在创建备份并写入配置……");
+  try{
+    const codexWasRunning=Boolean(state.workspace.codex.running);const result=await window.cpaSwitcher.applyConfiguration(gatherPayload());$("#confirmModal").classList.add("hidden");
+    let message=result.webdav?.ok?`配置已保存，WebDAV 加密备份已上传：${result.webdav.fileName}`:result.webdav&&!result.webdav.ok?`配置已保存，但 WebDAV 上传失败：${result.webdav.error}`:`配置写入成功，备份：${result.snapshot.id}`;
+    if(restart&&codexWasRunning){
+      setStatus("配置已保存，正在重启 Codex……");
+      try{const restarted=await window.cpaSwitcher.restartCodex();message=restarted.restarted?`${message}；Codex 已重启，请新建对话。`:`${message}；未检测到正在运行的 Codex，无需重启。`;showToast(message,restarted.restarted?"success":"")}
+      catch(error){showToast(`${message}；但 Codex 自动重启失败：${error.message}`,"error");setStatus("配置已保存，但 Codex 自动重启失败。")}
+    }else if(restart){showToast(`${message}；Codex 当前未运行，下次启动会读取新配置。`,"success")}
+    else{showToast(`${message}；当前对话不会改变，如新对话仍使用旧模型请重启 Codex。`,result.webdav&&!result.webdav.ok?"error":"success")}
+    await loadWorkspace()
+  }
+  catch(error){showToast(error.message,"error");setStatus(`写入失败：${error.message}`)}finally{saveButton.disabled=false;restartButton.disabled=false}
 }
 
 function logDiagnostic(message,type=""){
@@ -278,7 +288,7 @@ function bindEvents(){
   $("#followAllButton").addEventListener("click",()=>{const protect=$("#protectSpecial").checked;for(const a of state.agentDrafts){a.follow=!(protect&&specialRoles.has(a.name));if(a.follow)a.targetModel=$("#mainModel").value}setDirty();renderAgents()});
   $("#protectSpecial").addEventListener("change",()=>{const protect=$("#protectSpecial").checked;for(const a of state.agentDrafts)a.protected=protect&&specialRoles.has(a.name);renderAgents()});
   $("#applyButton").addEventListener("click",()=>{$("#changePreview").innerHTML=changePreview();$("#confirmModal").classList.remove("hidden")});
-  $("#cancelApplyButton").addEventListener("click",()=>$("#confirmModal").classList.add("hidden"));$("#confirmApplyButton").addEventListener("click",applyChanges);
+  $("#cancelApplyButton").addEventListener("click",()=>$("#confirmModal").classList.add("hidden"));$("#confirmApplyButton").addEventListener("click",()=>applyChanges(false));$("#confirmApplyRestartButton").addEventListener("click",()=>applyChanges(true));
   $("#toggleKeyButton").addEventListener("click",()=>{const input=$("#apiKey");input.type=input.type==="password"?"text":"password";$("#toggleKeyButton").textContent=input.type==="password"?"显示":"隐藏"});
   $("#addProfileButton").addEventListener("click",addProfile);$("#saveProfileButton").addEventListener("click",saveSelectedProfile);$("#deleteProfileButton").addEventListener("click",deleteSelectedProfile);
   $("#settingsTestButton").addEventListener("click",async()=>{logDiagnostic(`测试线路：${$("#profileName").value.trim()||"未命名线路"}`);try{const result=await window.cpaSwitcher.testHttp(editorConnectionRequest());showToast(`线路测试成功：${result.modelCount} 个模型，${result.elapsedMs} ms。`,"success")}catch(error){showToast(error.message,"error")}});$("#openConfigButton").addEventListener("click",()=>window.cpaSwitcher.openPath(state.workspace.paths.mainConfigPath));
