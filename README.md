@@ -1,135 +1,189 @@
-# CPA Model Switcher
+<p align="center">
+  <img src="assets/logo.svg" width="112" alt="CPA Model Switcher Logo">
+</p>
 
-[简体中文](README.md) | [English](README_EN.md)
+<h1 align="center">CPA Model Switcher</h1>
 
-一个独立的 Windows 桌面工具，用来管理 Codex 主代理和子代理使用的 CPA 线路、模型与传输配置。
+<p align="center">
+  面向 Codex Desktop 的独立 Windows 模型与子代理配置工具
+</p>
 
-它作为独立的 Windows 桌面程序运行，只在用户确认后修改 Codex 的 TOML 配置，并在每次写入前创建可恢复快照。
+<p align="center">
+  <a href="https://github.com/beer-on-ice/cpa-model-switcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/beer-on-ice/cpa-model-switcher?display_name=tag&sort=semver&style=flat-square"></a>
+  <a href="https://github.com/beer-on-ice/cpa-model-switcher/actions/workflows/release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/beer-on-ice/cpa-model-switcher/release.yml?style=flat-square&label=Windows%20build"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11&logoColor=white">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square"></a>
+</p>
 
-## 主要功能
+<p align="center">
+  <a href="https://github.com/beer-on-ice/cpa-model-switcher/releases/latest"><strong>下载最新 Windows 版本</strong></a>
+  · <a href="README_EN.md">English</a>
+  · <a href="#三步上手">快速上手</a>
+  · <a href="#常见问题">常见问题</a>
+</p>
 
-### 多线路 CPA 管理
+> [!IMPORTANT]
+> 这是一个独立桌面程序，不注入、不修改 Codex Desktop 程序文件。只有在你确认后，它才会写入 `%USERPROFILE%\.codex` 下的配置，并且每次写入前都会创建恢复快照。
 
-- 保存多个 OpenAI Responses API 兼容线路。
-- 每条线路独立配置显示名称、Codex 提供方标识、接口地址、API Key 和传输模式。
-- 自动导入当前 Codex 配置中的 provider，例如 `cpa_direct`，并明确标记来源。
-- 从所选线路的 `/v1/models` 动态获取模型列表。
-- API Key 使用 Electron `safeStorage` 和 Windows 安全存储加密保存。
+## 一眼看懂
 
-### 主代理与子代理模型切换
+| 你想做什么 | CPA Model Switcher 会做什么 |
+|---|---|
+| 切换主代理模型 | 修改 `config.toml`，可选择保存后自动重启 Codex |
+| 给不同子代理分配模型 | 扫描和管理 `agents/*.toml`，支持跟随主代理或独立模型 |
+| 让 CPA 模型出现在 Codex 模型目录 | 根据 `/models` 动态生成 `cpa-model-switcher-catalog.json` |
+| 管理多个 CPA | 保存多条线路，分别配置地址、API Key 和传输方式 |
+| 排查 400、WebSocket、压缩问题 | 提供 HTTP、WebSocket 和 `/responses/compact` 单项诊断 |
+| 防止改坏配置 | 写入前自动备份、哈希冲突检测、一键恢复 |
+| 跨设备备份 | 使用 AES-256-GCM 加密后上传 WebDAV |
 
-- 切换 Codex 主代理的模型和 `model_reasoning_effort`。
-- 提供“仅保存配置”和“应用并重启 Codex”两种应用方式；自动重启后，新建对话可靠读取所选主模型。
-- 根据当前 CPA `/models` 结果动态生成 `%USERPROFILE%\.codex\cpa-model-switcher-catalog.json`，让 Codex 模型栏识别 CPA 模型名称。
-- 保留其他工具已有的模型目录文件，不覆盖也不删除；主配置只切换到本工具独立维护的目录。
-- 扫描并管理 `%USERPROFILE%\.codex\agents\*.toml`。
-- 在子代理矩阵中点击角色名称，查看中文用途、适用场景、模型、推理强度、沙箱模式和配置文件位置。
-- 新增自定义子代理角色，并自动创建角色 TOML、注册主配置中的 `[agents.<角色标识>]` 区块。
-- 为每个子代理单独选择模型。
-- 一键让子代理跟随主代理。
-- 批量切换时可以保护 `visual_analysis` 和 `document_reader` 等 Gemini 专用角色。
-- 保留 TOML 中原有的注释、顺序和其他自定义配置。
+## 三步上手
 
-### HTTP、WebSocket 与压缩诊断
+### 1. 配置 CPA 线路
 
-- 测试 CPA `/v1/models` 请求和延迟。
-- 测试 Responses WebSocket 握手。
-- 配置自动检测、强制 WebSocket 或强制 HTTP 流式模式。
-- 使用当前主模型测试 `/responses/compact`，帮助排查压缩时错误使用其他模型的问题。
+进入 **线路管理**，填写：
 
-### 本地备份与恢复
+- 显示名称
+- Codex provider 标识
+- CPA `/v1` 地址
+- API Key
+- HTTP / WebSocket 模式
 
-- 每次写入配置前自动创建本地快照。
-- 查看快照包含的配置文件。
-- 恢复主配置及子代理配置。
-- 恢复远程或本地快照前再次创建安全快照。
-- 使用文件哈希检测外部修改，避免覆盖 Codex 或编辑器刚写入的内容。
+点击 **测试此线路**，确认能够读取模型列表。
 
-### 加密 WebDAV 备份
+### 2. 选择主代理和子代理模型
 
-- 自动或手动上传本地快照到 WebDAV。
-- 使用 AES-256-GCM 加密 `.cpabackup` 文件。
-- WebDAV 服务器不会收到明文 `config.toml` 或 API Key。
-- 查看远程备份列表。
-- 下载、解密并恢复远程备份。
-- WebDAV 密码和备份加密口令使用 Windows 安全存储保存。
+在 **模型切换** 页面：
 
-当前 WebDAV 实现使用标准方法：
+- 选择主代理模型与推理强度；
+- 为每个子代理选择“跟随主代理”或独立模型；
+- 点击角色名称查看职责、适用场景、沙箱模式和配置文件；
+- 需要时创建新的自定义角色。
+
+### 3. 应用配置
+
+| 按钮 | 行为 |
+|---|---|
+| **仅保存配置** | 写入并备份，不中断正在运行的 Codex；当前对话不会切换模型 |
+| **应用并重启 Codex** | 写入、备份、关闭并重新启动 Codex；重启后新对话可靠读取新模型 |
+
+> [!NOTE]
+> 自定义 CPA provider 在 Codex 顶部可能仍被归类为“自定义”。真实模型以新会话的请求记录和 `turn_context.model` 为准。
+
+## 工作流程
+
+```mermaid
+flowchart LR
+    A[CPA /models] --> B[CPA Model Switcher]
+    B --> C[config.toml]
+    B --> D[agents/*.toml]
+    B --> E[cpa-model-switcher-catalog.json]
+    B --> F[本地恢复快照]
+    F --> G[加密 WebDAV 备份]
+    C --> H[重启 Codex]
+    D --> H
+    E --> H
+    H --> I[新对话使用新模型]
+```
+
+## 功能概览
+
+### 主代理与模型目录
+
+- 切换 `model_provider`、`model` 和 `model_reasoning_effort`。
+- 从当前 CPA `/models` 获取完整模型列表。
+- 动态生成：
 
 ```text
-MKCOL
-PROPFIND
-PUT
-GET
+%USERPROFILE%\.codex\cpa-model-switcher-catalog.json
 ```
 
-认证方式为 Basic Auth，建议使用 WebDAV 服务提供的应用专用密码。
+- 不覆盖、不删除其他工具维护的模型目录。
+- 支持保存后自动定位并重启 Codex Desktop 主进程。
 
-### GitHub 自动构建与发布
+### 子代理矩阵
 
-- 可在 GitHub Actions 中手动运行 **Build and Release**，生成 Windows x64 构建产物但不发布 Release。
-- 推送与 `package.json` 版本一致的 `v*.*.*` 标签时，GitHub 自动运行测试、编译便携 EXE、生成 SHA-256，并创建或更新正式 Release。
-- 工作流使用仓库自动提供的 `GITHUB_TOKEN`，无需额外保存 GitHub Personal Access Token。
-- 自动构建仍是未签名版本；如需消除 SmartScreen 的未知发布者提示，需要另行配置 Windows 代码签名证书。
+- 自动发现 `%USERPROFILE%\.codex\agents\*.toml`。
+- 为每个角色单独设置模型和推理强度。
+- 一键让全部角色跟随主代理。
+- 可保护视觉与文档角色，避免批量切换。
+- 点击角色名称查看中文用途和完整配置。
+- 创建自定义角色并自动注册 `[agents.<role_id>]`。
 
-发布新版本示例：
+### 多线路 CPA
 
-```powershell
-npm version 0.5.0 --no-git-tag-version
-git add package.json package-lock.json
-git commit -m "chore: release v0.5.0"
-git tag -a v0.5.0 -m "CPA Model Switcher v0.5.0"
-git push origin main v0.5.0
+- 保存多条 OpenAI Responses API 兼容线路。
+- 为每条线路设置独立的 provider ID、地址、API Key 和传输模式。
+- 自动导入 Codex 当前使用的 provider。
+- API Key 的应用副本使用 Electron `safeStorage` 与 Windows 安全存储保护。
+
+### 连接诊断
+
+| 诊断项 | 用途 |
+|---|---|
+| HTTP `/models` | 检查地址、凭据、延迟和模型数量 |
+| Responses WebSocket | 检查握手与长连接兼容性 |
+| `/responses/compact` | 验证上下文压缩是否使用当前模型 |
+| 运行日志 | 记录配置写入、模型目录生成和 Codex 重启阶段 |
+
+运行日志位置：
+
+```text
+%APPDATA%\cpa-model-switcher\logs\app.log
 ```
 
-## 系统要求
+### 备份与恢复
 
-- Windows 10/11 x64。
-- 已安装并配置 Codex Desktop。
-- 一个支持 OpenAI Responses API 的 CPA 或兼容服务。
-- 可选：支持 Basic Auth 的 WebDAV 服务。
+- 每次配置写入前创建时间戳快照。
+- 保留主配置、角色配置和本工具模型目录。
+- 恢复前再次创建安全快照。
+- 使用 SHA-256 检测文件是否被其他程序修改。
 
-默认读取：
+### 加密 WebDAV
+
+- 自动或手动上传 `.cpabackup`。
+- 备份使用 AES-256-GCM 加密，不上传明文配置。
+- 支持远程列表、下载、解密和恢复。
+- WebDAV 密码与加密口令使用 Windows 安全存储保护。
+
+## 默认管理的文件
 
 ```text
 %USERPROFILE%\.codex\config.toml
 %USERPROFILE%\.codex\agents\*.toml
+%USERPROFILE%\.codex\cpa-model-switcher-catalog.json
 ```
 
-## 使用方法
+应用自己的数据位于：
 
-1. 打开 CPA Model Switcher。
-2. 进入“线路管理”，新增或导入 CPA 线路。
-3. 填写 CPA 地址和 API Key，然后测试线路。
-4. 在“模型切换”页面选择当前线路和主代理模型。
-5. 为子代理设置“跟随”或独立模型。
-6. 点击“应用更改”并确认 Diff。
-7. 新建 Codex 任务，或重新打开已有任务使配置生效。
-
-程序不会在启动时自动修改 Codex 配置。只有用户点击“应用更改”并再次确认后才会写入。
-
-## WebDAV 注意事项
-
-- 加密口令至少需要 8 个字符。
-- 加密口令遗失后，远程备份无法恢复。
-- WebDAV 上传失败不会回滚已经成功保存的本地 Codex 配置。
-- 上传失败时，本地快照仍然保留，可以稍后手动重试。
-- WebDAV 备份可能包含 Codex provider 配置，因此不提供明文上传模式。
+```text
+%APPDATA%\cpa-model-switcher\
+├── settings.json
+├── backups\
+└── logs\app.log
+```
 
 ## 安全设计
 
-- Renderer 不直接访问文件系统或 Node.js。
-- Electron 使用 `contextIsolation`，并关闭 Renderer 的 Node 集成。
-- API Key、WebDAV 密码和加密口令不会写入应用日志。
-- 应用自己的凭据副本通过 Windows 安全存储加密。
-- 配置写入采用临时文件和原子替换。
-- 每次写入前自动备份。
+- Renderer 无法直接访问 Node.js 或文件系统。
+- 启用 Electron `contextIsolation`，关闭 Renderer Node 集成。
+- API Key、WebDAV 密码和加密口令不会写入运行日志。
+- 配置使用临时文件和原子替换写入。
+- 写入前自动备份；恢复前再次备份。
+- WebDAV 只接收加密归档。
+- 不修改 Codex Desktop 安装目录。
 
-需要注意：Codex 本身的 `config.toml` 可能要求保存 provider token。CPA Model Switcher 无法改变 Codex 对该配置的读取方式，因此请保护好 Windows 用户目录权限。
+> [!WARNING]
+> “应用并重启 Codex”会中断正在运行的对话和子代理任务。请先等待重要任务结束。
 
-## 开发
+## 系统要求
 
-需要 Node.js 和 npm：
+- Windows 10/11 x64
+- 已安装 Codex Desktop
+- 一个兼容 OpenAI Responses API 的 CPA 服务
+- 可选：支持 Basic Auth 的 WebDAV 服务
+
+## 本地开发
 
 ```powershell
 npm install
@@ -138,46 +192,85 @@ npm run smoke
 npm start
 ```
 
-构建 Windows 便携 EXE：
+构建便携 EXE：
 
 ```powershell
 npm run dist
 ```
 
-构建产物位于：
+产物位置：
 
 ```text
 release/CPA-Model-Switcher-<version>-x64.exe
+release/SHA256SUMS.txt
 ```
 
-## 测试
+## 自动构建与发布
 
-测试覆盖：
+工作流：[`.github/workflows/release.yml`](.github/workflows/release.yml)
 
-- TOML 定点修改与注释保留。
-- 主代理和子代理 provider/model 切换。
-- 新 provider 区块创建。
-- 子代理角色创建、主配置注册、详情更新和重复标识拦截。
-- 本地快照创建与恢复。
-- 外部文件修改冲突检测。
-- AES-256-GCM 加密和错误口令检测。
-- 快照压缩与解压。
-- 模拟 WebDAV 建目录、上传、远程列表、下载和恢复。
-- Electron Renderer 与 Preload 冒烟测试。
-- Codex Desktop 主进程识别、误识别防护和模拟重启流程。
-- 动态模型目录生成和旧目录不被修改的迁移保护。
-
-运行：
+- 手动运行：生成 Windows x64 Actions 构建产物，不创建 Release。
+- 推送 `v*.*.*` 标签：自动测试、构建、生成 SHA-256 并发布 GitHub Release。
+- 标签版本必须与 `package.json` 一致。
+- 使用仓库自带的 `GITHUB_TOKEN`，无需额外 Personal Access Token。
 
 ```powershell
-npm test
-npm run smoke
+npm version 0.6.0 --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: release v0.6.0"
+git tag -a v0.6.0 -m "CPA Model Switcher v0.6.0"
+git push origin main v0.6.0
 ```
 
-## 发布说明
+## 测试范围
 
-当前本地构建未进行 Authenticode 代码签名，直接下载自构建 EXE 时 Windows SmartScreen 可能显示警告。请核对发布页面提供的 SHA-256 后再运行。
+当前测试覆盖：
 
-## 许可证
+- TOML 定点修改、注释保留和冲突检测
+- 主代理、provider、模型目录和子代理切换
+- 自定义角色创建与注册
+- Codex Desktop 主进程识别和模拟重启
+- 本地快照与恢复
+- AES-256-GCM 备份加密
+- 模拟 WebDAV 上传、列表、下载和恢复
+- Electron Renderer / Preload 冒烟检查
+
+## 常见问题
+
+<details>
+<summary><strong>为什么 Codex 仍然显示“自定义”？</strong></summary>
+
+自定义 provider 可能被 Codex 统一归类为“自定义”。本工具会同步具体模型名称，但真实生效模型仍应以新会话请求记录为准。
+
+</details>
+
+<details>
+<summary><strong>切换模型后，当前对话会改变吗？</strong></summary>
+
+不会。模型属于会话上下文的一部分。使用“应用并重启 Codex”，然后创建新对话。
+
+</details>
+
+<details>
+<summary><strong>为什么 Windows SmartScreen 提示未知发布者？</strong></summary>
+
+当前构建尚未配置 Authenticode 代码签名。请从 GitHub Release 下载并核对发布页面中的 SHA-256。
+
+</details>
+
+<details>
+<summary><strong>WebDAV 失败会不会破坏本地配置？</strong></summary>
+
+不会。WebDAV 上传发生在本地配置和快照成功保存之后；上传失败时，本地快照仍然保留。
+
+</details>
+
+## Logo
+
+`assets/logo.svg` 是为本项目绘制的原创矢量标志，由渐变方块、字母 `C` 与模型切换箭头组成；未使用第三方商标或网络素材。
+
+当前 Windows EXE 仍使用 Electron 默认程序图标。后续可以基于此 SVG 生成 ICO，并加入 Windows 程序签名与图标资源。
+
+## License
 
 [MIT License](LICENSE)
