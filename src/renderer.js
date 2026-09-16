@@ -155,7 +155,7 @@ function gatherPayload(){
   const profile=activeProfile();const mode=profile?.transportMode||"http";
   const supportsWs=mode==="auto"?(state.lastWsResult?.ok??state.workspace.main.connection.supportsWebsockets):mode==="websocket";
   const provider=profile?.providerId||$("#mainProvider").value.trim()||"cpa_direct";
-  return{paths:state.workspace.paths,main:{provider,model:$("#mainModel").value,reasoningEffort:$("#mainEffort").value},connection:{profileId:profile?.id,name:profile?.name,baseUrl:profile?.baseUrl,apiKey:undefined,supportsWebsockets:supportsWs,transportMode:mode},agents:state.agentDrafts.map(a=>({filePath:a.filePath,originalHash:a.hash,provider,model:a.follow?$("#mainModel").value:a.targetModel,reasoningEffort:a.targetEffort})),reason:`切换线路 ${profile?.name||provider}，主代理 -> ${$("#mainModel").value}`}
+  return{paths:state.workspace.paths,main:{provider,model:$("#mainModel").value,reasoningEffort:$("#mainEffort").value},catalogModels:state.models.map(item=>item.id),connection:{profileId:profile?.id,name:profile?.name,baseUrl:profile?.baseUrl,apiKey:undefined,supportsWebsockets:supportsWs,transportMode:mode},agents:state.agentDrafts.map(a=>({filePath:a.filePath,originalHash:a.hash,provider,model:a.follow?$("#mainModel").value:a.targetModel,reasoningEffort:a.targetEffort})),reason:`切换线路 ${profile?.name||provider}，主代理 -> ${$("#mainModel").value}`}
 }
 
 function changePreview(){
@@ -170,7 +170,7 @@ async function applyChanges(restart=false){
   const saveButton=$("#confirmApplyButton"),restartButton=$("#confirmApplyRestartButton");saveButton.disabled=true;restartButton.disabled=true;setStatus("正在创建备份并写入配置……");
   try{
     const codexWasRunning=Boolean(state.workspace.codex.running);const result=await window.cpaSwitcher.applyConfiguration(gatherPayload());$("#confirmModal").classList.add("hidden");
-    let message=result.webdav?.ok?`配置已保存，WebDAV 加密备份已上传：${result.webdav.fileName}`:result.webdav&&!result.webdav.ok?`配置已保存，但 WebDAV 上传失败：${result.webdav.error}`:`配置写入成功，备份：${result.snapshot.id}`;
+    let message=result.webdav?.ok?`配置已保存，WebDAV 加密备份已上传：${result.webdav.fileName}`:result.webdav&&!result.webdav.ok?`配置已保存，但 WebDAV 上传失败：${result.webdav.error}`:`配置写入成功，备份：${result.snapshot.id}`;if(result.modelCatalog?.generatedCount)message+=`；已同步 ${result.modelCatalog.generatedCount} 个 CPA 模型到独立目录`;
     if(restart&&codexWasRunning){
       setStatus("配置已保存，正在重启 Codex……");
       try{const restarted=await window.cpaSwitcher.restartCodex();message=restarted.restarted?`${message}；Codex 已重启，请新建对话。`:`${message}；未检测到正在运行的 Codex，无需重启。`;showToast(message,restarted.restarted?"success":"")}
@@ -292,6 +292,7 @@ function bindEvents(){
   $("#toggleKeyButton").addEventListener("click",()=>{const input=$("#apiKey");input.type=input.type==="password"?"text":"password";$("#toggleKeyButton").textContent=input.type==="password"?"显示":"隐藏"});
   $("#addProfileButton").addEventListener("click",addProfile);$("#saveProfileButton").addEventListener("click",saveSelectedProfile);$("#deleteProfileButton").addEventListener("click",deleteSelectedProfile);
   $("#settingsTestButton").addEventListener("click",async()=>{logDiagnostic(`测试线路：${$("#profileName").value.trim()||"未命名线路"}`);try{const result=await window.cpaSwitcher.testHttp(editorConnectionRequest());showToast(`线路测试成功：${result.modelCount} 个模型，${result.elapsedMs} ms。`,"success")}catch(error){showToast(error.message,"error")}});$("#openConfigButton").addEventListener("click",()=>window.cpaSwitcher.openPath(state.workspace.paths.mainConfigPath));
+  $("#openLogButton").addEventListener("click",()=>window.cpaSwitcher.openLog());
   $("#saveWebdavButton").addEventListener("click",saveWebdavSettings);$("#testWebdavButton").addEventListener("click",testWebdav);$("#uploadLatestButton").addEventListener("click",()=>uploadWebdavBackup());$("#refreshRemoteBackupsButton").addEventListener("click",refreshRemoteBackups);
   $("#testHttpButton").addEventListener("click",testHttp);$("#testWsButton").addEventListener("click",testWebSocket);$("#testCompactButton").addEventListener("click",testCompact);
   $("#runAllDiagnostics").addEventListener("click",async()=>{$("#diagnosticLog").innerHTML="";const ok=await testHttp();if(ok)await testWebSocket();if(ok)await testCompact();logDiagnostic("诊断序列结束。","ok")});

@@ -61,19 +61,32 @@ function codexStatus(options = {}) {
   }
 }
 
-function terminateProcessTree(processId) {
+function terminateProcessTree(processId, options = {}) {
+  const run = options.run || execFileSync;
+  const listProcesses = options.listProcesses || listCodexProcesses;
+  const isRunning = () => listProcesses().some((item) =>
+    Number(item.processId || item.ProcessId) === Number(processId),
+  );
   try {
-    execFileSync("taskkill.exe", ["/PID", String(processId), "/T"], {
+    run("taskkill.exe", ["/PID", String(processId), "/T"], {
       encoding: "utf8",
       windowsHide: true,
       timeout: 8000,
     });
-  } catch {
-    execFileSync("taskkill.exe", ["/PID", String(processId), "/T", "/F"], {
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 8000,
-    });
+    return { terminated: true, mode: "graceful" };
+  } catch (firstError) {
+    if (!isRunning()) return { terminated: true, mode: "graceful_partial" };
+    try {
+      run("taskkill.exe", ["/PID", String(processId), "/T", "/F"], {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 8000,
+      });
+      return { terminated: true, mode: "forced" };
+    } catch (secondError) {
+      if (!isRunning()) return { terminated: true, mode: "forced_partial" };
+      throw new Error(`无法关闭 Codex：${secondError.message || firstError.message}`);
+    }
   }
 }
 
@@ -93,7 +106,7 @@ async function restartCodex(options = {}) {
     throw new Error("自动重启 Codex 目前只支持 Windows。");
   }
   const listProcesses = options.listProcesses || listCodexProcesses;
-  const terminate = options.terminate || terminateProcessTree;
+  const terminate = options.terminate || ((processId) => terminateProcessTree(processId, { listProcesses }));
   const launch = options.launch || launchDesktop;
   const wait = options.wait || delay;
   const attempts = Number(options.attempts || 80);
@@ -130,5 +143,6 @@ module.exports = {
   listCodexProcesses,
   findCodexDesktopProcess,
   codexStatus,
+  terminateProcessTree,
   restartCodex,
 };

@@ -101,6 +101,41 @@ test("creates and activates a new provider section", () => {
   assert.match(child, /model_provider = "cpa_backup"/);
 });
 
+test("generates an independent model catalog from the active CPA model list", () => {
+  const ws = tempWorkspace();
+  const legacyCatalogPath = path.join(ws.codexHome, "cc-switch-model-catalog.json");
+  fs.writeFileSync(legacyCatalogPath, JSON.stringify({ models: [{
+    slug: "gpt-template",
+    display_name: "gpt-template",
+    description: "template",
+    context_window: 500000,
+    max_context_window: 500000,
+    priority: 1000,
+    visibility: "list",
+    supported_in_api: true,
+  }] }, null, 2), "utf8");
+  const mainBefore = service.updateTopLevel(fs.readFileSync(ws.mainConfigPath, "utf8"), {
+    model_catalog_json: "cc-switch-model-catalog.json",
+  });
+  fs.writeFileSync(ws.mainConfigPath, mainBefore, "utf8");
+  const originalLegacy = fs.readFileSync(legacyCatalogPath, "utf8");
+  const agent = service.parseAgentFile(ws.agentPath);
+  const result = service.applyConfiguration({
+    paths: { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory },
+    main: { provider: "cpa_direct", model: "claude-opus-4-6-thinking", reasoningEffort: "high" },
+    catalogModels: ["claude-opus-4-6-thinking", "gemini-3.5-flash-lite"],
+    connection: {},
+    agents: [{ filePath: ws.agentPath, originalHash: agent.hash, provider: "cpa_direct", model: "claude-opus-4-6-thinking", reasoningEffort: "high" }],
+  }, ws.backupRoot);
+  const generatedPath = path.join(ws.codexHome, "cpa-model-switcher-catalog.json");
+  const generated = JSON.parse(fs.readFileSync(generatedPath, "utf8"));
+  const mainAfter = fs.readFileSync(ws.mainConfigPath, "utf8");
+  assert.equal(result.modelCatalog.generatedCount, 2);
+  assert.deepEqual(generated.models.map((item) => item.slug), ["claude-opus-4-6-thinking", "gemini-3.5-flash-lite"]);
+  assert.match(mainAfter, /model_catalog_json = "cpa-model-switcher-catalog\.json"/);
+  assert.equal(fs.readFileSync(legacyCatalogPath, "utf8"), originalLegacy);
+});
+
 test("creates a role file and registers it in the main config", () => {
   const ws = tempWorkspace();
   const result = service.createRole({

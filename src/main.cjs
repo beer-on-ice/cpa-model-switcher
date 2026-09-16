@@ -54,11 +54,13 @@ function createWindow() {
             roleBridgeReady: typeof window.cpaSwitcher?.createRole === 'function' && typeof window.cpaSwitcher?.updateRole === 'function',
             roleUiReady: Boolean(document.querySelector('#addAgentButton') && document.querySelector('#roleModal')),
             restartBridgeReady: typeof window.cpaSwitcher?.restartCodex === 'function',
-            restartUiReady: Boolean(document.querySelector('#confirmApplyRestartButton'))
+            restartUiReady: Boolean(document.querySelector('#confirmApplyRestartButton')),
+            logBridgeReady: typeof window.cpaSwitcher?.openLog === 'function',
+            logUiReady: Boolean(document.querySelector('#openLogButton'))
           };
         })()`);
         console.log(`SMOKE_RESULT ${JSON.stringify(result)}`);
-        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.agentCount >= 1 ? 0 : 2);
+        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.logBridgeReady && result.logUiReady && result.agentCount >= 1 ? 0 : 2);
       } catch (error) {
         console.error(`SMOKE_ERROR ${error.stack || error.message}`);
         app.exit(1);
@@ -74,6 +76,18 @@ function settingsPath() {
 
 function backupRoot() {
   return path.join(app.getPath("userData"), "backups");
+}
+
+function logFilePath() {
+  return path.join(app.getPath("userData"), "logs", "app.log");
+}
+
+function logEvent(event, details = {}) {
+  try {
+    const filePath = logFilePath();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, `${JSON.stringify({ timestamp: new Date().toISOString(), event, ...details })}\n`, "utf8");
+  } catch {}
 }
 
 function loadSettings() {
@@ -391,6 +405,13 @@ function registerIpc() {
     return saveSettings(next);
   });
   ipcMain.handle("config:apply", async (_event, payload) => {
+    logEvent("config.apply.request", {
+      provider: payload.main?.provider,
+      model: payload.main?.model,
+      agentCount: payload.agents?.length || 0,
+      catalogModelCount: payload.catalogModels?.length || 0,
+    });
+    try {
     const paths = { ...configService.defaultPaths(), ...(payload.paths || {}) };
     const main = configService.parseMainConfig(paths.mainConfigPath);
     const settings = ensureProfiles(loadSettings(), main);
@@ -417,7 +438,24 @@ function registerIpc() {
         webdav = { ok: false, error: error.message };
       }
     }
+    logEvent("config.apply.success", {
+      provider: payload.main?.provider,
+      model: payload.main?.model,
+      snapshotId: result.snapshot?.id,
+      catalogPath: result.modelCatalog?.filePath,
+      catalogModelCount: result.modelCatalog?.generatedCount,
+      webdav: webdav?.ok ?? null,
+    });
     return { ...result, webdav };
+    } catch (error) {
+      logEvent("config.apply.failure", {
+        provider: payload.main?.provider,
+        model: payload.main?.model,
+        message: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
   });
   ipcMain.handle("roles:create", (_event, payload) =>
     configService.createRole(payload || {}, backupRoot()),
@@ -452,11 +490,28 @@ function registerIpc() {
     return true;
   });
   ipcMain.handle("system:codex-status", () => codexProcessService.codexStatus());
-  ipcMain.handle("system:restart-codex", () => codexProcessService.restartCodex());
+  ipcMain.handle("system:restart-codex", async () => {
+    const before = codexProcessService.codexStatus();
+    logEvent("codex.restart.request", before);
+    try {
+      const result = await codexProcessService.restartCodex();
+      logEvent("codex.restart.success", result);
+      return result;
+    } catch (error) {
+      logEvent("codex.restart.failure", { message: error.message, stack: error.stack });
+      throw error;
+    }
+  });
+  ipcMain.handle("system:open-log", () => {
+    logEvent("log.open.request");
+    shell.showItemInFolder(logFilePath());
+    return logFilePath();
+  });
 }
 
 app.whenReady().then(() => {
   app.setAppUserModelId("com.mdsd.cpa-model-switcher");
+  logEvent("app.started", { version: app.getVersion() });
   registerIpc();
   createWindow();
   app.on("activate", () => {

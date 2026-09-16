@@ -20,6 +20,8 @@ It runs as an independent Windows desktop application. Codex TOML files are modi
 
 - Change the Codex main-agent model and `model_reasoning_effort`.
 - Choose between saving only and applying with an automatic Codex restart; new chats reliably load the selected main model after restart.
+- Generate `%USERPROFILE%\.codex\cpa-model-switcher-catalog.json` dynamically from the active CPA `/models` response so Codex can display CPA model names.
+- Preserve model catalogs created by other tools; the main configuration is redirected to the catalog maintained independently by this application.
 - Discover and manage `%USERPROFILE%\.codex\agents\*.toml`.
 - Click a role in the subagent matrix to inspect its purpose, use cases, model, reasoning effort, sandbox mode, and configuration path.
 - Create custom subagent roles, including the role TOML file and its `[agents.<role_id>]` registration in the main Codex configuration.
@@ -163,6 +165,7 @@ The test suite covers:
 - Mock WebDAV directory creation, upload, listing, download, and restore.
 - Electron Renderer and Preload smoke tests.
 - Codex Desktop root-process detection, unrelated-process protection, and a mocked restart flow.
+- Dynamic model-catalog generation with migration protection that leaves the previous catalog unchanged.
 
 Run:
 

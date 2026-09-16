@@ -219,6 +219,83 @@ function validateModelConfig(text, filePath) {
   if (!model || !provider) throw new Error(`配置校验失败：${filePath} 缺少 model 或 model_provider`);
 }
 
+function modelFamily(modelId) {
+  const value = String(modelId || "").toLowerCase();
+  if (value.includes("gemini")) return "gemini";
+  if (value.includes("claude")) return "claude";
+  if (value.includes("grok")) return "grok";
+  if (value.includes("gpt")) return "gpt";
+  return "other";
+}
+
+function prepareModelCatalog(mainText, mainConfigPath, codexHome, modelIds) {
+  const targetName = "cpa-model-switcher-catalog.json";
+  const catalogPath = path.join(codexHome, targetName);
+  const configuredPath = String(readTomlKey(splitTopLevel(mainText).top, "model_catalog_json") || "").trim();
+  const sourcePath = configuredPath
+    ? (path.isAbsolute(configuredPath) ? path.resolve(configuredPath) : path.resolve(path.dirname(mainConfigPath), configuredPath))
+    : catalogPath;
+  let sourceModels = [];
+  if (fs.existsSync(sourcePath)) {
+    try {
+      const sourceCatalog = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+      if (Array.isArray(sourceCatalog.models)) sourceModels = sourceCatalog.models;
+    } catch {}
+  }
+  const desiredIds = [...new Set((Array.isArray(modelIds) ? modelIds : [modelIds])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean))];
+  const models = desiredIds.map((modelId, index) => {
+    const exact = sourceModels.find((item) => String(item.slug || "") === modelId);
+    const family = modelFamily(modelId);
+    const template = exact || sourceModels.find((item) => modelFamily(item.slug) === family) || sourceModels[0];
+    const base = template ? JSON.parse(JSON.stringify(template)) : {
+      additional_speed_tiers: [],
+      availability_nux: null,
+      base_instructions: "You are Codex, a coding agent. You and the user share the same workspace and collaborate to achieve the user's goals.",
+      context_window: family === "gemini" ? 1048576 : 500000,
+      default_reasoning_level: "high",
+      default_reasoning_summary: "none",
+      effective_context_window_percent: 95,
+      experimental_supported_tools: [],
+      input_modalities: ["text", "image"],
+      max_context_window: family === "gemini" ? 1048576 : 500000,
+      service_tiers: [],
+      shell_type: "shell_command",
+      support_verbosity: false,
+      supported_in_api: true,
+      supported_reasoning_levels: [
+        { description: "Disable Thinking", effort: "none" },
+        { description: "Enabled Thinking", effort: "high" },
+      ],
+      supports_image_detail_original: false,
+      supports_parallel_tool_calls: false,
+      supports_reasoning_summaries: true,
+      supports_search_tool: false,
+      truncation_policy: { limit: 10000, mode: "bytes" },
+      upgrade: null,
+      visibility: "list",
+    };
+    return {
+      ...base,
+      slug: modelId,
+      display_name: modelId,
+      description: modelId,
+      priority: 1000 + index,
+      visibility: "list",
+      supported_in_api: true,
+      upgrade: null,
+    };
+  });
+  return {
+    mainText: updateTopLevel(mainText, { model_catalog_json: targetName }),
+    filePath: catalogPath,
+    sourcePath,
+    content: `${JSON.stringify({ models }, null, 2)}\n`,
+    generatedCount: models.length,
+  };
+}
+
 function normalizeRolePayload(payload = {}) {
   const role = payload.role || payload;
   const id = String(role.id || "").trim();
@@ -327,15 +404,26 @@ function updateRole(payload, backupRoot) {
 }
 
 function applyConfiguration(payload, backupRoot) {
-  const paths = { ...defaultPaths(), ...(payload.paths || {}) };
+  const customPaths = payload.paths || {};
+  const paths = { ...defaultPaths(), ...customPaths };
+  if (!customPaths.codexHome && customPaths.mainConfigPath) {
+    paths.codexHome = path.dirname(customPaths.mainConfigPath);
+  }
   const touchedAgents = (payload.agents || []).map((agent) => agent.filePath);
+  let mainText = fs.readFileSync(paths.mainConfigPath, "utf8");
+  const catalog = prepareModelCatalog(
+    mainText,
+    paths.mainConfigPath,
+    paths.codexHome,
+    [...(payload.catalogModels || []), payload.main.model],
+  );
+  mainText = catalog.mainText;
   const snapshot = createSnapshot(
-    [paths.mainConfigPath, ...touchedAgents],
+    [paths.mainConfigPath, ...(fs.existsSync(catalog.filePath) ? [catalog.filePath] : []), ...touchedAgents],
     backupRoot,
     payload.reason || "配置写入前自动备份",
   );
 
-  let mainText = fs.readFileSync(paths.mainConfigPath, "utf8");
   mainText = updateTopLevel(mainText, {
     model_provider: payload.main.provider,
     model: payload.main.model,
@@ -374,9 +462,16 @@ function applyConfiguration(payload, backupRoot) {
     preparedAgents.push({ filePath: agent.filePath, text });
   }
 
+  if (catalog.content) atomicWrite(catalog.filePath, catalog.content);
   atomicWrite(paths.mainConfigPath, mainText);
   for (const agent of preparedAgents) atomicWrite(agent.filePath, agent.text);
-  return { snapshot };
+  return {
+    snapshot,
+    modelCatalog: {
+      filePath: catalog.filePath,
+      generatedCount: catalog.generatedCount,
+    },
+  };
 }
 
 function listSnapshots(backupRoot) {
@@ -426,6 +521,7 @@ module.exports = {
   listAgents,
   loadWorkspace,
   createSnapshot,
+  prepareModelCatalog,
   createRole,
   updateRole,
   applyConfiguration,

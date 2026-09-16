@@ -22,6 +22,16 @@ test("does not mistake an unrelated ChatGPT process for Codex", () => {
   assert.equal(service.findCodexDesktopProcess(processes), null);
 });
 
+test("treats a nonzero taskkill result as success when the process already exited", () => {
+  let processes = fixture();
+  const result = service.terminateProcessTree(100, {
+    run: () => { processes = []; throw new Error("taskkill returned a partial failure"); },
+    listProcesses: () => processes,
+  });
+  assert.equal(result.terminated, true);
+  assert.equal(result.mode, "graceful_partial");
+});
+
 test("restarts the detected desktop process and waits for the replacement", async () => {
   let processes = fixture();
   let terminatedPid = null;

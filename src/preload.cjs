@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld("cpaSwitcher", {
   openPath: (targetPath) => ipcRenderer.invoke("system:open-path", targetPath),
   codexStatus: () => ipcRenderer.invoke("system:codex-status"),
   restartCodex: () => ipcRenderer.invoke("system:restart-codex"),
+  openLog: () => ipcRenderer.invoke("system:open-log"),
 });
