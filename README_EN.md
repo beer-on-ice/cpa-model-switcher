@@ -4,7 +4,7 @@
 
 CPA Model Switcher is an independent Windows desktop utility for managing the CPA providers, models, and transport settings used by Codex main agents and subagents.
 
-It does not inject code into Codex Desktop and does not require the Codey local router. Codex TOML files are modified only after explicit confirmation, and a recoverable snapshot is created before every write.
+It runs as an independent Windows desktop application. Codex TOML files are modified only after explicit confirmation, and a recoverable snapshot is created before every write.
 
 ## Features
 
