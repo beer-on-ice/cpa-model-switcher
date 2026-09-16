@@ -1,0 +1,47 @@
+{
+  "name": "cpa-model-switcher",
+  "version": "0.3.0",
+  "description": "Independent Codex main and subagent model switcher for CPA providers",
+  "main": "src/main.cjs",
+  "author": "MDSD",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "smoke": "set CPA_SWITCHER_SMOKE=1&& electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist": "npm test && electron-builder --win portable",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "electron": "44.4.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.mdsd.cpa-model-switcher",
+    "productName": "CPA Model Switcher",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CPA-Model-Switcher-${version}-${arch}.${ext}"
+    }
+  }
+}

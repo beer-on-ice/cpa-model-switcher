@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none';">
+  <title>CPA Model Switcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="app-header">
+    <div class="brand"><div class="brand-icon">C</div><div><h1>CPA Model Switcher</h1><p>Codex 主代理与子代理模型控制台</p></div></div>
+    <div class="actions"><div id="cpaHealth" class="health neutral"><i></i>等待检测</div><button id="reloadButton" class="btn ghost">重新加载</button><button id="applyButton" class="btn primary" disabled>应用更改</button></div>
+  </header>
+  <div class="body-grid">
+    <aside class="sidebar">
+      <nav>
+        <button class="nav active" data-page="models"><b>⇄</b>模型切换</button>
+        <button class="nav" data-page="diagnostics"><b>⌁</b>连接诊断</button>
+        <button class="nav" data-page="backups"><b>↶</b>备份历史</button>
+        <button class="nav" data-page="settings"><b>⚙</b>接入设置</button>
+      </nav>
+      <div class="sidebar-meta"><span id="versionLabel">v0.1.0</span><span>本地配置模式</span></div>
+    </aside>
+    <main class="content">
+      <section id="page-models" class="page active">
+        <div class="page-head"><div><h2>模型切换</h2><p>分别管理主代理和每个子代理的模型。</p></div><button id="refreshModelsButton" class="btn">刷新 CPA 模型</button></div>
+        <article class="card">
+          <div class="card-head"><div><h3>主代理</h3><code id="mainConfigPath">config.toml</code></div><span class="badge blue">MAIN</span></div>
+          <div class="form-grid main-form">
+            <label><span>当前线路</span><select id="activeProfileSelect"></select></label>
+            <label><span>模型</span><select id="mainModel"></select></label>
+            <label><span>提供方标识</span><input id="mainProvider" value="cpa_direct" readonly></label>
+            <label><span>推理强度</span><select id="mainEffort"><option>none</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option><option>ultra</option></select></label>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h3>子代理矩阵</h3><p>跟随模式会在保存时使用主代理模型。</p></div><div class="actions"><label class="check"><input id="protectSpecial" type="checkbox" checked>保护 Gemini 角色</label><button id="followAllButton" class="btn">全部跟随主代理</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>角色</th><th>模式</th><th>目标模型</th><th>推理强度</th><th>状态</th></tr></thead><tbody id="agentsBody"></tbody></table></div>
+          <div id="pendingSummary" class="pending">没有待保存的更改</div>
+        </article>
+      </section>
+      <section id="page-diagnostics" class="page">
+        <div class="page-head"><div><h2>连接诊断</h2><p>检查 CPA、WebSocket 和上下文压缩。</p></div><button id="runAllDiagnostics" class="btn primary">开始完整诊断</button></div>
+        <div class="metrics">
+          <div class="metric"><span>HTTP 状态</span><strong id="httpMetric">未测试</strong><small id="httpDetail">CPA /models</small></div>
+          <div class="metric"><span>WebSocket</span><strong id="wsMetric">未测试</strong><small id="wsDetail">Responses 握手</small></div>
+          <div class="metric"><span>上下文压缩</span><strong id="compactMetric">未测试</strong><small id="compactDetail">跟随当前模型</small></div>
+        </div>
+        <article class="card">
+          <div class="card-head"><div><h3>单项测试</h3><p>测试不会修改 Codex 配置。</p></div><div class="actions"><button id="testHttpButton" class="btn">测试 HTTP</button><button id="testWsButton" class="btn">测试 WebSocket</button><button id="testCompactButton" class="btn">测试当前模型压缩</button></div></div>
+          <div id="diagnosticLog" class="console"><div class="muted">等待开始诊断……</div></div>
+        </article>
+      </section>
+      <section id="page-backups" class="page">
+        <div class="page-head"><div><h2>备份历史</h2><p>每次写入前自动保存配置快照。</p></div><button id="refreshBackupsButton" class="btn">刷新列表</button></div>
+        <article class="card backup-layout"><div id="backupList" class="backup-list"></div><div id="backupDetail" class="backup-detail empty"><div class="empty-icon">↶</div><h3>选择一个备份</h3><p>查看备份文件并执行恢复。</p></div></article>
+        <article class="card"><div class="card-head"><div><h3>WebDAV 远程备份</h3><p>远程文件使用 AES-256-GCM 加密，不上传明文配置。</p></div><div class="actions"><span id="webdavStatusBadge" class="badge gray">未配置</span><button id="refreshRemoteBackupsButton" class="btn">刷新远程列表</button></div></div><div id="remoteBackupList" class="remote-backups empty"><p>尚未读取远程备份</p></div></article>
+      </section>
+      <section id="page-settings" class="page">
+        <div class="page-head"><div><h2>线路管理</h2><p>保存多个 CPA 接入配置，并选择一条应用到 Codex。</p></div><button id="addProfileButton" class="btn primary">新增线路</button></div>
+        <article class="card profile-layout">
+          <div class="profile-list-panel"><div class="profile-panel-head"><h3>已配置线路</h3><span id="profileCount" class="badge gray">0</span></div><div id="profilesList" class="profiles-list"></div></div>
+          <div class="profile-editor">
+            <div class="card-head"><div><h3 id="profileEditorTitle">线路详情</h3><p>显示名称用于界面；提供方标识会写入 Codex 配置。</p></div><span id="importedProfileBadge" class="badge blue hidden">从 Codex 导入</span></div>
+            <div class="form-grid settings-form">
+              <label><span>显示名称</span><input id="profileName" placeholder="例如：主 CPA"></label>
+              <label><span>提供方标识</span><input id="profileProviderId" placeholder="例如：cpa_main"></label>
+              <label class="wide"><span>CPA 地址</span><input id="baseUrl" placeholder="https://example.com/v1"></label>
+              <label class="wide"><span>API Key</span><div class="input-action"><input id="apiKey" type="password" autocomplete="off" placeholder="已配置时可留空"><button id="toggleKeyButton">显示</button></div></label>
+              <label><span>连接方式</span><select id="transportMode"><option value="auto">自动检测</option><option value="websocket">强制 WebSocket</option><option value="http">强制 HTTP 流式</option></select></label>
+              <label><span>保存行为</span><select id="restartMode"><option value="prompt">仅提示重启</option><option value="never">不提示重启</option></select></label>
+            </div>
+            <div class="settings-actions"><button id="saveProfileButton" class="btn primary">保存线路</button><button id="settingsTestButton" class="btn">测试此线路</button><button id="deleteProfileButton" class="btn danger">删除线路</button><button id="openConfigButton" class="btn ghost">打开 Codex 配置</button></div>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h3>WebDAV 备份</h3><p>自动上传本地快照，并支持从其他设备恢复。</p></div><label class="check"><input id="webdavEnabled" type="checkbox">每次保存后自动上传</label></div>
+          <div class="form-grid webdav-form">
+            <label class="wide"><span>WebDAV 地址</span><input id="webdavUrl" placeholder="https://dav.example.com/remote.php/dav/files/user"></label>
+            <label><span>用户名</span><input id="webdavUsername" autocomplete="username"></label>
+            <label><span>远程目录</span><input id="webdavRemotePath" value="CPA-Model-Switcher"></label>
+            <label><span>WebDAV 密码 / 应用密码</span><input id="webdavPassword" type="password" autocomplete="current-password" placeholder="已配置时可留空"></label>
+            <label><span>备份加密口令</span><input id="webdavPassphrase" type="password" autocomplete="new-password" placeholder="至少 8 个字符；已配置时可留空"></label>
+          </div>
+          <div class="settings-actions"><button id="saveWebdavButton" class="btn primary">保存 WebDAV</button><button id="testWebdavButton" class="btn">测试连接</button><button id="uploadLatestButton" class="btn">上传最新本地备份</button></div>
+          <div class="security-note">加密口令遗失后远程备份无法恢复。WebDAV 密码和加密口令均使用 Windows 安全存储保存。</div>
+        </article>
+        <article class="card info"><h3>生效说明</h3><ul><li>新建任务会读取最新的主代理配置。</li><li>新派生的子代理会读取对应角色文件。</li><li>已经运行的任务可能继续使用启动时的模型。</li><li>WebSocket 设置通常需要重新打开任务或重启 Codex。</li></ul></article>
+      </section>
+    </main>
+  </div>
+  <footer class="status"><span id="statusText">正在读取配置……</span><div><span id="transportStatus">传输：--</span><span id="codexStatus">Codex：--</span><span id="backupStatus">备份：--</span></div></footer>
+</div>
+<div id="confirmModal" class="modal-bg hidden"><div class="modal"><h3>确认应用配置</h3><p>即将写入以下更改，并自动创建恢复快照。</p><div id="changePreview" class="change-preview"></div><label class="check modal-check"><input id="confirmRestartHint" type="checkbox" checked>保存后提示重新打开 Codex 任务</label><div class="modal-actions"><button id="cancelApplyButton" class="btn ghost">取消</button><button id="confirmApplyButton" class="btn primary">确认写入</button></div></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="renderer.js"></script>
+</body>
+</html>
