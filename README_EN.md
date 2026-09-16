@@ -62,6 +62,23 @@ GET
 
 Authentication uses Basic Auth. An application-specific password from the WebDAV provider is recommended.
 
+### Automated GitHub builds and releases
+
+- Run **Build and Release** manually in GitHub Actions to produce a Windows x64 artifact without publishing a Release.
+- Pushing a `v*.*.*` tag that matches the `package.json` version runs the tests, builds the portable EXE, generates its SHA-256 checksum, and creates or updates the GitHub Release.
+- The workflow uses the repository-provided `GITHUB_TOKEN`; no extra GitHub Personal Access Token is required.
+- Automated builds remain unsigned. A Windows code-signing certificate must be configured separately to remove the SmartScreen unknown-publisher warning.
+
+Example release flow:
+
+```powershell
+npm version 0.5.0 --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: release v0.5.0"
+git tag -a v0.5.0 -m "CPA Model Switcher v0.5.0"
+git push origin main v0.5.0
+```
+
 ## Requirements
 
 - Windows 10/11 x64.

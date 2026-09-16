@@ -62,6 +62,23 @@ GET
 
 认证方式为 Basic Auth，建议使用 WebDAV 服务提供的应用专用密码。
 
+### GitHub 自动构建与发布
+
+- 可在 GitHub Actions 中手动运行 **Build and Release**，生成 Windows x64 构建产物但不发布 Release。
+- 推送与 `package.json` 版本一致的 `v*.*.*` 标签时，GitHub 自动运行测试、编译便携 EXE、生成 SHA-256，并创建或更新正式 Release。
+- 工作流使用仓库自动提供的 `GITHUB_TOKEN`，无需额外保存 GitHub Personal Access Token。
+- 自动构建仍是未签名版本；如需消除 SmartScreen 的未知发布者提示，需要另行配置 Windows 代码签名证书。
+
+发布新版本示例：
+
+```powershell
+npm version 0.5.0 --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: release v0.5.0"
+git tag -a v0.5.0 -m "CPA Model Switcher v0.5.0"
+git push origin main v0.5.0
+```
+
 ## 系统要求
 
 - Windows 10/11 x64。

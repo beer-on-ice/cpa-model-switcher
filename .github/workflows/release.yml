@@ -1,0 +1,96 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify tag matches package version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $expectedTag = "v$packageVersion"
+          if ("${{ github.ref_name }}" -ne $expectedTag) {
+            throw "Tag ${{ github.ref_name }} does not match package.json version $packageVersion. Expected $expectedTag."
+          }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build portable Windows executable
+        run: npx electron-builder --win portable --publish never
+
+      - name: Generate SHA-256 checksum
+        id: package
+        shell: pwsh
+        run: |
+          $assets = @(Get-ChildItem release -Filter "CPA-Model-Switcher-*-x64.exe" -File)
+          if ($assets.Count -ne 1) {
+            throw "Expected exactly one Windows x64 executable, found $($assets.Count)."
+          }
+          $asset = $assets[0]
+          $hash = Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256
+          "$($hash.Hash)  $($asset.Name)" | Set-Content release\SHA256SUMS.txt -Encoding ascii
+          "asset_path=$($asset.FullName)" >> $env:GITHUB_OUTPUT
+          "asset_name=$($asset.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: CPA-Model-Switcher-${{ github.ref_name }}-windows-x64
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Create or update GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $asset = "${{ steps.package.outputs.asset_path }}"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset release\SHA256SUMS.txt --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $asset release\SHA256SUMS.txt `
+              --verify-tag `
+              --title "CPA Model Switcher $tag" `
+              --generate-notes `
+              --repo $env:GITHUB_REPOSITORY
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release publication failed with exit code $LASTEXITCODE."
+          }
