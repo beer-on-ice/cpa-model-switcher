@@ -50,11 +50,13 @@ function createWindow() {
             pageCount: document.querySelectorAll('.page').length,
             agentCount: workspace.agents.length,
             mainModel: workspace.main.model,
-            bridgeReady: typeof window.cpaSwitcher?.listModels === 'function'
+            bridgeReady: typeof window.cpaSwitcher?.listModels === 'function',
+            roleBridgeReady: typeof window.cpaSwitcher?.createRole === 'function' && typeof window.cpaSwitcher?.updateRole === 'function',
+            roleUiReady: Boolean(document.querySelector('#addAgentButton') && document.querySelector('#roleModal'))
           };
         })()`);
         console.log(`SMOKE_RESULT ${JSON.stringify(result)}`);
-        app.exit(result.bridgeReady && result.agentCount >= 1 ? 0 : 2);
+        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.agentCount >= 1 ? 0 : 2);
       } catch (error) {
         console.error(`SMOKE_ERROR ${error.stack || error.message}`);
         app.exit(1);
@@ -430,6 +432,12 @@ function registerIpc() {
     }
     return { ...result, webdav };
   });
+  ipcMain.handle("roles:create", (_event, payload) =>
+    configService.createRole(payload || {}, backupRoot()),
+  );
+  ipcMain.handle("roles:update", (_event, payload) =>
+    configService.updateRole(payload || {}, backupRoot()),
+  );
   ipcMain.handle("backups:list", () => configService.listSnapshots(backupRoot()));
   ipcMain.handle("backups:restore", (_event, snapshotDirectory) =>
     configService.restoreSnapshot(snapshotDirectory, backupRoot()),

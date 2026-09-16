@@ -20,6 +20,8 @@ It runs as an independent Windows desktop application. Codex TOML files are modi
 
 - Change the Codex main-agent model and `model_reasoning_effort`.
 - Discover and manage `%USERPROFILE%\.codex\agents\*.toml`.
+- Click a role in the subagent matrix to inspect its purpose, use cases, model, reasoning effort, sandbox mode, and configuration path.
+- Create custom subagent roles, including the role TOML file and its `[agents.<role_id>]` registration in the main Codex configuration.
 - Select an independent model for each subagent.
 - Make all subagents follow the main-agent model.
 - Protect Gemini-focused roles such as `visual_analysis` and `document_reader` from bulk changes.
@@ -135,6 +137,7 @@ The test suite covers:
 - Targeted TOML updates and comment preservation.
 - Main-agent and subagent provider/model switching.
 - New provider-section creation.
+- Subagent role creation, main-config registration, detail updates, and duplicate-ID rejection.
 - Local snapshot creation and restoration.
 - External file modification conflict detection.
 - AES-256-GCM encryption and incorrect-passphrase rejection.

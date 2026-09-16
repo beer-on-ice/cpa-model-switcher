@@ -36,7 +36,7 @@
           </div>
         </article>
         <article class="card">
-          <div class="card-head"><div><h3>子代理矩阵</h3><p>跟随模式会在保存时使用主代理模型。</p></div><div class="actions"><label class="check"><input id="protectSpecial" type="checkbox" checked>保护 Gemini 角色</label><button id="followAllButton" class="btn">全部跟随主代理</button></div></div>
+          <div class="card-head"><div><h3>子代理矩阵</h3><p>点击角色名称查看职责、适用场景和配置详情；跟随模式会在保存时使用主代理模型。</p></div><div class="actions"><label class="check"><input id="protectSpecial" type="checkbox" checked>保护 Gemini 角色</label><button id="addAgentButton" class="btn primary">新增角色</button><button id="followAllButton" class="btn">全部跟随主代理</button></div></div>
           <div class="table-wrap"><table><thead><tr><th>角色</th><th>模式</th><th>目标模型</th><th>推理强度</th><th>状态</th></tr></thead><tbody id="agentsBody"></tbody></table></div>
           <div id="pendingSummary" class="pending">没有待保存的更改</div>
         </article>
@@ -94,6 +94,20 @@
   <footer class="status"><span id="statusText">正在读取配置……</span><div><span id="transportStatus">传输：--</span><span id="codexStatus">Codex：--</span><span id="backupStatus">备份：--</span></div></footer>
 </div>
 <div id="confirmModal" class="modal-bg hidden"><div class="modal"><h3>确认应用配置</h3><p>即将写入以下更改，并自动创建恢复快照。</p><div id="changePreview" class="change-preview"></div><label class="check modal-check"><input id="confirmRestartHint" type="checkbox" checked>保存后提示重新打开 Codex 任务</label><div class="modal-actions"><button id="cancelApplyButton" class="btn ghost">取消</button><button id="confirmApplyButton" class="btn primary">确认写入</button></div></div></div>
+<div id="roleModal" class="modal-bg hidden"><div class="modal role-modal">
+  <div class="role-modal-head"><div><h3 id="roleModalTitle">角色详情</h3><p id="roleModalSubtitle">查看或调整这个子代理的职责与运行配置。</p></div><button id="closeRoleButton" class="icon-button" aria-label="关闭">×</button></div>
+  <div id="roleGuide" class="role-guide"></div>
+  <div class="form-grid role-form">
+    <label><span>角色标识</span><input id="roleId" placeholder="例如：api_research"></label>
+    <label><span>使用线路</span><input id="roleProvider" readonly></label>
+    <label class="wide"><span>职责说明</span><textarea id="roleDescription" rows="3" placeholder="说明这个角色负责什么、何时使用、需要返回什么证据。"></textarea><small>此说明会写入角色文件和 Codex 主配置，也是子代理理解职责的重要依据。</small></label>
+    <label><span>模型</span><select id="roleModel"></select></label>
+    <label><span>推理强度</span><select id="roleEffort"><option>none</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option><option>ultra</option></select></label>
+    <label><span>沙箱模式</span><select id="roleSandbox"><option value="read-only">只读（推荐）</option><option value="workspace-write">工作区可写</option><option value="danger-full-access">完全访问</option></select></label>
+    <label><span>配置文件</span><code id="roleFilePath" class="path-value">保存后生成</code></label>
+  </div>
+  <div class="modal-actions"><button id="cancelRoleButton" class="btn ghost">取消</button><button id="saveRoleButton" class="btn primary">保存角色</button></div>
+</div></div>
 <div id="toast" class="toast hidden"></div>
 <script src="renderer.js"></script>
 </body>

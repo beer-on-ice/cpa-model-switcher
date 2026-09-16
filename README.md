@@ -20,6 +20,8 @@
 
 - 切换 Codex 主代理的模型和 `model_reasoning_effort`。
 - 扫描并管理 `%USERPROFILE%\.codex\agents\*.toml`。
+- 在子代理矩阵中点击角色名称，查看中文用途、适用场景、模型、推理强度、沙箱模式和配置文件位置。
+- 新增自定义子代理角色，并自动创建角色 TOML、注册主配置中的 `[agents.<角色标识>]` 区块。
 - 为每个子代理单独选择模型。
 - 一键让子代理跟随主代理。
 - 批量切换时可以保护 `visual_analysis` 和 `document_reader` 等 Gemini 专用角色。
@@ -135,6 +137,7 @@ release/CPA-Model-Switcher-<version>-x64.exe
 - TOML 定点修改与注释保留。
 - 主代理和子代理 provider/model 切换。
 - 新 provider 区块创建。
+- 子代理角色创建、主配置注册、详情更新和重复标识拦截。
 - 本地快照创建与恢复。
 - 外部文件修改冲突检测。
 - AES-256-GCM 加密和错误口令检测。

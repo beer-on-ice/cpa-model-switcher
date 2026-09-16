@@ -14,7 +14,7 @@ function tempWorkspace() {
   const mainConfigPath = path.join(codexHome, "config.toml");
   fs.writeFileSync(mainConfigPath, `# keep-main-comment\nsandbox_mode = "danger-full-access"\nmodel_provider = "cpa_direct"\nmodel = "gpt-old"\nmodel_reasoning_effort = "medium"\n\n[model_providers.cpa_direct]\n# keep-provider-comment\nbase_url = "https://cpa.example/v1"\nexperimental_bearer_token = "secret"\nwire_api = "responses"\nsupports_websockets = false\n\n[features]\nhooks = true\n`, "utf8");
   const agentPath = path.join(agentsDirectory, "default.toml");
-  fs.writeFileSync(agentPath, `name = "default"\n# keep-agent-comment\nmodel_provider = "cpa_direct"\nmodel = "agent-old"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n`, "utf8");
+  fs.writeFileSync(agentPath, `name = "default"\ndescription = "General read-only scout."\n# keep-agent-comment\nmodel_provider = "cpa_direct"\nmodel = "agent-old"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n`, "utf8");
   return { root, codexHome, mainConfigPath, agentsDirectory, backupRoot, agentPath };
 }
 
@@ -26,6 +26,7 @@ test("loads main and agent configuration without exposing secret", () => {
   assert.equal(loaded.main.connection.apiKey, undefined);
   assert.equal(loaded.connectionSecretPresent, true);
   assert.equal(loaded.agents[0].model, "agent-old");
+  assert.equal(loaded.agents[0].description, "General read-only scout.");
 });
 
 test("updates only selected top-level and provider values", () => {
@@ -98,4 +99,57 @@ test("creates and activates a new provider section", () => {
   assert.match(main, /base_url = "https:\/\/backup.example\/v1"/);
   assert.match(main, /experimental_bearer_token = "backup-secret"/);
   assert.match(child, /model_provider = "cpa_backup"/);
+});
+
+test("creates a role file and registers it in the main config", () => {
+  const ws = tempWorkspace();
+  const result = service.createRole({
+    paths: { mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory },
+    role: {
+      id: "api_research",
+      description: "Search API implementation and return file:line evidence.",
+      provider: "cpa_direct",
+      model: "grok-4.6",
+      reasoningEffort: "high",
+      sandboxMode: "read-only",
+    },
+  }, ws.backupRoot);
+  const rolePath = path.join(ws.agentsDirectory, "api_research.toml");
+  const roleText = fs.readFileSync(rolePath, "utf8");
+  const mainText = fs.readFileSync(ws.mainConfigPath, "utf8");
+  assert.equal(result.role.id, "api_research");
+  assert.match(roleText, /description = "Search API implementation and return file:line evidence\."/);
+  assert.match(roleText, /model = "grok-4\.6"/);
+  assert.match(mainText, /\[agents\.api_research\]/);
+  assert.match(mainText, /description = "Search API implementation and return file:line evidence\."/);
+  assert.ok(fs.existsSync(path.join(result.snapshot.directory, "manifest.json")));
+  assert.throws(() => service.createRole({
+    paths: { mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory },
+    role: { id: "api_research", description: "Duplicate", provider: "cpa_direct", model: "grok-4.6" },
+  }, ws.backupRoot), /已存在/);
+});
+
+test("updates role details while preserving existing comments", () => {
+  const ws = tempWorkspace();
+  const current = service.parseAgentFile(ws.agentPath);
+  const result = service.updateRole({
+    paths: { mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory },
+    role: {
+      id: "default",
+      filePath: ws.agentPath,
+      originalHash: current.hash,
+      description: "General verification and focused read-only exploration.",
+      provider: "cpa_direct",
+      model: "grok-4.6",
+      reasoningEffort: "high",
+      sandboxMode: "read-only",
+    },
+  }, ws.backupRoot);
+  const roleText = fs.readFileSync(ws.agentPath, "utf8");
+  const mainText = fs.readFileSync(ws.mainConfigPath, "utf8");
+  assert.match(roleText, /# keep-agent-comment/);
+  assert.match(roleText, /description = "General verification and focused read-only exploration\."/);
+  assert.match(roleText, /model = "grok-4\.6"/);
+  assert.match(mainText, /\[agents\.default\]/);
+  assert.equal(result.role.reasoningEffort, "high");
 });

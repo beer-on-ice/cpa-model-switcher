@@ -137,10 +137,13 @@ function parseMainConfig(mainConfigPath) {
 
 function parseAgentFile(filePath) {
   const text = fs.readFileSync(filePath, "utf8");
+  const id = path.basename(filePath, ".toml");
   return {
+    id,
     filePath,
     fileName: path.basename(filePath),
-    name: String(readTomlKey(text, "name") || path.basename(filePath, ".toml")),
+    name: String(readTomlKey(text, "name") || id),
+    description: String(readTomlKey(text, "description") || ""),
     provider: String(readTomlKey(text, "model_provider") || "cpa_direct"),
     model: String(readTomlKey(text, "model") || ""),
     reasoningEffort: String(readTomlKey(text, "model_reasoning_effort") || "high"),
@@ -214,6 +217,113 @@ function validateModelConfig(text, filePath) {
   const model = readTomlKey(text, "model");
   const provider = readTomlKey(text, "model_provider");
   if (!model || !provider) throw new Error(`配置校验失败：${filePath} 缺少 model 或 model_provider`);
+}
+
+function normalizeRolePayload(payload = {}) {
+  const role = payload.role || payload;
+  const id = String(role.id || "").trim();
+  if (!/^[a-z][a-z0-9_]*$/.test(id)) {
+    throw new Error("角色标识必须以小写字母开头，并且只能包含小写字母、数字和下划线。");
+  }
+  const description = String(role.description || "").replace(/\s+/g, " ").trim();
+  if (!description) throw new Error("请填写角色职责说明。");
+  const provider = String(role.provider || "").trim();
+  const model = String(role.model || "").trim();
+  if (!provider || !model) throw new Error("角色缺少提供方或模型。");
+  const reasoningEffort = String(role.reasoningEffort || "high").trim();
+  const allowedEfforts = new Set(["none", "low", "medium", "high", "xhigh", "max", "ultra"]);
+  if (!allowedEfforts.has(reasoningEffort)) throw new Error(`不支持的推理强度：${reasoningEffort}`);
+  const sandboxMode = String(role.sandboxMode || "read-only").trim();
+  const allowedSandboxes = new Set(["read-only", "workspace-write", "danger-full-access"]);
+  if (!allowedSandboxes.has(sandboxMode)) throw new Error(`不支持的沙箱模式：${sandboxMode}`);
+  return { id, description, provider, model, reasoningEffort, sandboxMode };
+}
+
+function roleFileText(role) {
+  return [
+    `name = ${encodeTomlValue(role.id)}`,
+    `description = ${encodeTomlValue(role.description)}`,
+    `model_provider = ${encodeTomlValue(role.provider)}`,
+    `model = ${encodeTomlValue(role.model)}`,
+    `model_reasoning_effort = ${encodeTomlValue(role.reasoningEffort)}`,
+    `sandbox_mode = ${encodeTomlValue(role.sandboxMode)}`,
+    "",
+  ].join("\n");
+}
+
+function createRole(payload, backupRoot) {
+  const paths = { ...defaultPaths(), ...(payload.paths || {}) };
+  const role = normalizeRolePayload(payload);
+  const filePath = path.join(paths.agentsDirectory, `${role.id}.toml`);
+  if (fs.existsSync(filePath)) throw new Error(`角色 ${role.id} 已存在。`);
+
+  let mainText = fs.readFileSync(paths.mainConfigPath, "utf8");
+  if (sectionBounds(mainText, `agents.${role.id}`)) {
+    throw new Error(`主配置中已经注册了角色 ${role.id}。`);
+  }
+  const snapshot = createSnapshot(
+    [paths.mainConfigPath],
+    backupRoot,
+    payload.reason || `新增子代理角色 ${role.id} 前自动备份`,
+  );
+  mainText = updateSection(mainText, `agents.${role.id}`, {
+    description: role.description,
+    config_file: filePath,
+  });
+  const agentText = roleFileText(role);
+  validateModelConfig(agentText, filePath);
+  fs.mkdirSync(paths.agentsDirectory, { recursive: true });
+  atomicWrite(filePath, agentText);
+  try {
+    atomicWrite(paths.mainConfigPath, mainText);
+  } catch (error) {
+    fs.rmSync(filePath, { force: true });
+    throw error;
+  }
+  return { role: parseAgentFile(filePath), snapshot };
+}
+
+function updateRole(payload, backupRoot) {
+  const paths = { ...defaultPaths(), ...(payload.paths || {}) };
+  const role = normalizeRolePayload(payload);
+  const filePath = path.resolve(String(payload.role?.filePath || payload.filePath || ""));
+  const agentsRoot = `${path.resolve(paths.agentsDirectory)}${path.sep}`.toLowerCase();
+  if (!filePath.toLowerCase().startsWith(agentsRoot) || path.extname(filePath).toLowerCase() !== ".toml") {
+    throw new Error("角色文件必须位于 Codex agents 目录中。");
+  }
+  if (path.basename(filePath, ".toml") !== role.id) throw new Error("已有角色的标识不能直接修改。");
+  if (!fs.existsSync(filePath)) throw new Error(`角色文件不存在：${filePath}`);
+
+  let agentText = fs.readFileSync(filePath, "utf8");
+  if (payload.role?.originalHash || payload.originalHash) {
+    const originalHash = payload.role?.originalHash || payload.originalHash;
+    const currentHash = crypto.createHash("sha256").update(agentText).digest("hex");
+    if (currentHash !== originalHash) {
+      throw new Error(`${path.basename(filePath)} 已被其他程序修改，请重新加载后再保存。`);
+    }
+  }
+  const snapshot = createSnapshot(
+    [paths.mainConfigPath, filePath],
+    backupRoot,
+    payload.reason || `更新子代理角色 ${role.id} 前自动备份`,
+  );
+  agentText = updateTopLevel(agentText, {
+    name: role.id,
+    description: role.description,
+    model_provider: role.provider,
+    model: role.model,
+    model_reasoning_effort: role.reasoningEffort,
+    sandbox_mode: role.sandboxMode,
+  });
+  validateModelConfig(agentText, filePath);
+  let mainText = fs.readFileSync(paths.mainConfigPath, "utf8");
+  mainText = updateSection(mainText, `agents.${role.id}`, {
+    description: role.description,
+    config_file: filePath,
+  });
+  atomicWrite(filePath, agentText);
+  atomicWrite(paths.mainConfigPath, mainText);
+  return { role: parseAgentFile(filePath), snapshot };
 }
 
 function applyConfiguration(payload, backupRoot) {
@@ -316,6 +426,8 @@ module.exports = {
   listAgents,
   loadWorkspace,
   createSnapshot,
+  createRole,
+  updateRole,
   applyConfiguration,
   listSnapshots,
   restoreSnapshot,

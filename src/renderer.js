@@ -1,7 +1,16 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const specialRoles = new Set(["visual_analysis", "document_reader"]);
-const state = { workspace:null, models:[], agentDrafts:[], profiles:[], activeProfileId:"", selectedProfileId:"", dirty:false, backups:[], selectedBackup:null, remoteBackups:[], lastWsResult:null };
+const roleCatalog = {
+  default:{title:"通用探查",summary:"处理没有专用角色覆盖的只读检索和基础核验。",uses:["定位少量文件或配置","回答范围明确的代码问题","作为普通子代理的默认入口"]},
+  quick_scan:{title:"快速扫描",summary:"快速定位文件、符号、配置和小段代码，强调速度与精确出处。",uses:["查找某个类或函数在哪里","确认配置项来自哪个文件","返回 file:line 位置"]},
+  deep_research:{title:"深度研究",summary:"跨文件、跨目录深度检索，梳理调用链、模块关系和完整证据。",uses:["追踪一个功能横跨哪些模块","分析调用链和数据流","核对实现现状并汇总多处证据"]},
+  visual_analysis:{title:"视觉分析",summary:"分析截图、界面状态、图片和视觉差异。",uses:["检查 UI 截图中的布局问题","比较改版前后的视觉差异","识别界面状态和可见错误"]},
+  document_reader:{title:"文档与前端阅读",summary:"阅读 PDF、文档版式、网页界面和前端视觉实现。",uses:["核验 PDF 或文档排版","阅读复杂网页界面","检查前端视觉实现与设计稿"]},
+  verifier:{title:"独立核验",summary:"独立复查关键事实、配置、代码结论和测试证据。",uses:["复核主代理的关键判断","确认配置是否真正生效","检查测试证据是否支持结论"]},
+  architect:{title:"架构分析",summary:"分析模块边界、依赖、约束和方案取舍。",uses:["评估模块职责划分","分析依赖与耦合风险","比较多个实现方案的权衡"]},
+};
+const state = { workspace:null, models:[], agentDrafts:[], profiles:[], activeProfileId:"", selectedProfileId:"", dirty:false, backups:[], selectedBackup:null, remoteBackups:[], lastWsResult:null, roleEditor:null };
 
 function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c])}
 function showToast(message,type=""){const toast=$("#toast");toast.textContent=message;toast.className=`toast ${type}`.trim();clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>toast.classList.add("hidden"),4200)}
@@ -42,20 +51,86 @@ async function activateProfile(id){
   try{const saved=await window.cpaSwitcher.saveSettings({profiles:state.profiles,activeProfileId:id,autoRestartCodex:false});state.profiles=saved.profiles;await refreshModels()}catch(error){showToast(error.message,"error")}
 }
 function createAgentDraft(agent){return{...agent,follow:agent.model===state.workspace.main.model&&agent.provider===state.workspace.main.provider,protected:specialRoles.has(agent.name),targetModel:agent.model,targetEffort:agent.reasoningEffort}}
+function roleInfo(role){const id=typeof role==="string"?role:role.id||role.name;const known=roleCatalog[id];if(known)return known;const description=typeof role==="object"?role.description:"";return{title:"自定义角色",summary:description||"用户创建的专用子代理角色。",uses:["按职责说明执行专门的只读任务","使用独立的模型、推理强度和沙箱设置"]}}
 function renderAgents(){
   const mainModel=$("#mainModel").value;
   $("#agentsBody").innerHTML=state.agentDrafts.map((a,i)=>{
     const effective=a.follow?mainModel:a.targetModel;
     const badge=a.protected?'<span class="badge violet">专用角色</span>':a.follow?'<span class="badge blue">跟随</span>':'<span class="badge gray">独立</span>';
     const efforts=["none","low","medium","high","xhigh","max","ultra"].map(v=>`<option ${a.targetEffort===v?"selected":""}>${v}</option>`).join("");
-    return `<tr data-index="${i}"><td class="role"><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(a.fileName)}</small></td><td><label class="mode"><input class="agent-follow" type="checkbox" ${a.follow?"checked":""}><span>${a.follow?"跟随":"独立"}</span></label></td><td><select class="agent-model" ${a.follow?"disabled":""}>${modelOptions(effective)}</select></td><td><select class="agent-effort">${efforts}</select></td><td>${badge}</td></tr>`
+    const info=roleInfo(a);
+    return `<tr data-index="${i}"><td class="role"><button class="role-link" type="button"><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(info.title)} · ${escapeHtml(info.summary)}</small></button></td><td><label class="mode"><input class="agent-follow" type="checkbox" ${a.follow?"checked":""}><span>${a.follow?"跟随":"独立"}</span></label></td><td><select class="agent-model" ${a.follow?"disabled":""}>${modelOptions(effective)}</select></td><td><select class="agent-effort">${efforts}</select></td><td>${badge}</td></tr>`
   }).join("");
   $$("#agentsBody tr").forEach(row=>{
     const draft=state.agentDrafts[Number(row.dataset.index)];
+    row.querySelector(".role-link").addEventListener("click",()=>openRoleDetails(Number(row.dataset.index)));
     row.querySelector(".agent-follow").addEventListener("change",e=>{draft.follow=e.target.checked;if(draft.follow)draft.targetModel=$("#mainModel").value;setDirty();renderAgents()});
     row.querySelector(".agent-model").addEventListener("change",e=>{draft.targetModel=e.target.value;setDirty()});
     row.querySelector(".agent-effort").addEventListener("change",e=>{draft.targetEffort=e.target.value;setDirty()});
   });
+}
+
+function roleFilePreview(id){
+  const directory=state.workspace?.paths?.agentsDirectory||"";
+  return id?`${directory.replace(/[\\/]$/,"")}\\${id}.toml`:"保存后生成"
+}
+
+function renderRoleGuide(id,description=""){
+  const info=roleInfo({id,description});
+  const configured=description&&roleCatalog[id]?`<p><b>配置中的职责：</b>${escapeHtml(description)}</p>`:"";
+  $("#roleGuide").innerHTML=`<strong>${escapeHtml(info.title)}</strong><p>${escapeHtml(info.summary)}</p>${configured}<ul>${info.uses.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+}
+
+function updateRolePreview(){
+  const id=$("#roleId").value.trim();
+  renderRoleGuide(id,$("#roleDescription").value.trim());
+  if(state.roleEditor?.mode==="create")$("#roleFilePath").textContent=roleFilePreview(id)
+}
+
+function openNewRole(){
+  const profile=activeProfile();
+  state.roleEditor={mode:"create",index:null};
+  $("#roleModalTitle").textContent="新增子代理角色";
+  $("#roleModalSubtitle").textContent="创建独立角色文件，并自动注册到 Codex 主配置。";
+  $("#roleId").readOnly=false;$("#roleId").value="";
+  $("#roleDescription").value="";
+  $("#roleProvider").value=profile?.providerId||state.workspace.main.provider;
+  $("#roleModel").innerHTML=modelOptions($("#mainModel").value||state.workspace.main.model);
+  $("#roleEffort").value="high";$("#roleSandbox").value="read-only";
+  $("#roleFilePath").textContent="保存后生成";$("#saveRoleButton").textContent="创建角色";
+  renderRoleGuide("","");$("#roleModal").classList.remove("hidden");$("#roleId").focus()
+}
+
+function openRoleDetails(index){
+  const role=state.agentDrafts[index];if(!role)return;
+  const info=roleInfo(role);state.roleEditor={mode:"update",index};
+  $("#roleModalTitle").textContent=`${info.title} · ${role.name}`;
+  $("#roleModalSubtitle").textContent="这里展示角色用途和实际运行配置；保存时会先自动备份。";
+  $("#roleId").readOnly=true;$("#roleId").value=role.id||role.name;
+  $("#roleDescription").value=role.description||"";
+  $("#roleProvider").value=role.provider;
+  $("#roleModel").innerHTML=modelOptions(role.targetModel||role.model);
+  $("#roleEffort").value=role.targetEffort||role.reasoningEffort;
+  $("#roleSandbox").value=role.sandboxMode||"read-only";
+  $("#roleFilePath").textContent=role.filePath;$("#saveRoleButton").textContent="保存角色";
+  renderRoleGuide(role.id||role.name,role.description||"");$("#roleModal").classList.remove("hidden")
+}
+
+function closeRoleModal(){$("#roleModal").classList.add("hidden");state.roleEditor=null}
+
+async function saveRole(){
+  const editor=state.roleEditor;if(!editor)return;
+  const id=$("#roleId").value.trim(),description=$("#roleDescription").value.trim();
+  if(!/^[a-z][a-z0-9_]*$/.test(id)){showToast("角色标识必须以小写字母开头，只能包含小写字母、数字和下划线。","error");return}
+  if(!description){showToast("请填写角色职责说明。","error");return}
+  if(state.dirty&&!confirm("当前子代理矩阵还有未应用的更改。单独保存角色后界面会重新加载，这些待应用更改会丢失。仍要继续吗？"))return;
+  const existing=editor.mode==="update"?state.agentDrafts[editor.index]:null;
+  const payload={paths:state.workspace.paths,role:{id,filePath:existing?.filePath,originalHash:existing?.hash,description,provider:$("#roleProvider").value.trim(),model:$("#roleModel").value,reasoningEffort:$("#roleEffort").value,sandboxMode:$("#roleSandbox").value}};
+  const button=$("#saveRoleButton");button.disabled=true;setStatus(editor.mode==="create"?"正在创建角色……":"正在更新角色……");
+  try{
+    const result=editor.mode==="create"?await window.cpaSwitcher.createRole(payload):await window.cpaSwitcher.updateRole(payload);
+    closeRoleModal();showToast(`${editor.mode==="create"?"角色已创建":"角色已更新"}，备份：${result.snapshot.id}`,"success");await loadWorkspace()
+  }catch(error){showToast(error.message,"error");setStatus(`角色保存失败：${error.message}`)}finally{button.disabled=false}
 }
 
 async function refreshModels(silent=false){
@@ -196,6 +271,10 @@ function bindEvents(){
   $("#activeProfileSelect").addEventListener("change",event=>activateProfile(event.target.value));
   $("#mainModel").addEventListener("change",()=>{for(const a of state.agentDrafts)if(a.follow)a.targetModel=$("#mainModel").value;setDirty();renderAgents()});
   $("#mainEffort").addEventListener("change",()=>setDirty());
+  $("#addAgentButton").addEventListener("click",openNewRole);
+  $("#closeRoleButton").addEventListener("click",closeRoleModal);$("#cancelRoleButton").addEventListener("click",closeRoleModal);$("#saveRoleButton").addEventListener("click",saveRole);
+  $("#roleId").addEventListener("input",updateRolePreview);$("#roleDescription").addEventListener("input",updateRolePreview);
+  $("#roleModal").addEventListener("click",event=>{if(event.target===$("#roleModal"))closeRoleModal()});
   $("#followAllButton").addEventListener("click",()=>{const protect=$("#protectSpecial").checked;for(const a of state.agentDrafts){a.follow=!(protect&&specialRoles.has(a.name));if(a.follow)a.targetModel=$("#mainModel").value}setDirty();renderAgents()});
   $("#protectSpecial").addEventListener("change",()=>{const protect=$("#protectSpecial").checked;for(const a of state.agentDrafts)a.protected=protect&&specialRoles.has(a.name);renderAgents()});
   $("#applyButton").addEventListener("click",()=>{$("#changePreview").innerHTML=changePreview();$("#confirmModal").classList.remove("hidden")});
@@ -207,7 +286,7 @@ function bindEvents(){
   $("#testHttpButton").addEventListener("click",testHttp);$("#testWsButton").addEventListener("click",testWebSocket);$("#testCompactButton").addEventListener("click",testCompact);
   $("#runAllDiagnostics").addEventListener("click",async()=>{$("#diagnosticLog").innerHTML="";const ok=await testHttp();if(ok)await testWebSocket();if(ok)await testCompact();logDiagnostic("诊断序列结束。","ok")});
   $("#refreshBackupsButton").addEventListener("click",refreshBackups);
-  window.addEventListener("keydown",event=>{if(event.ctrlKey&&event.key.toLowerCase()==="s"){event.preventDefault();if(state.dirty)$("#applyButton").click()}if(event.ctrlKey&&event.key.toLowerCase()==="r"){event.preventDefault();refreshModels()}if(event.key==="Escape")$("#confirmModal").classList.add("hidden")})
+  window.addEventListener("keydown",event=>{if(event.ctrlKey&&event.key.toLowerCase()==="s"){event.preventDefault();if(!$("#roleModal").classList.contains("hidden"))saveRole();else if(state.dirty)$("#applyButton").click()}if(event.ctrlKey&&event.key.toLowerCase()==="r"){event.preventDefault();refreshModels()}if(event.key==="Escape"){$("#confirmModal").classList.add("hidden");closeRoleModal()}})
 }
 
 bindEvents();

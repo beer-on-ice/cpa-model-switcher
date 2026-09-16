@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("cpaSwitcher", {
   testCompact: (request) => ipcRenderer.invoke("diagnostics:compact", request),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   applyConfiguration: (payload) => ipcRenderer.invoke("config:apply", payload),
+  createRole: (payload) => ipcRenderer.invoke("roles:create", payload),
+  updateRole: (payload) => ipcRenderer.invoke("roles:update", payload),
   listBackups: () => ipcRenderer.invoke("backups:list"),
   restoreBackup: (directory) => ipcRenderer.invoke("backups:restore", directory),
   testWebDav: (settings) => ipcRenderer.invoke("webdav:test", settings),
