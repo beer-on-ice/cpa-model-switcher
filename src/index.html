@@ -33,11 +33,13 @@
             <label><span>模型</span><select id="mainModel"></select></label>
             <label><span>提供方标识</span><input id="mainProvider" value="cpa_direct" readonly></label>
             <label><span>推理强度</span><select id="mainEffort"><option>none</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option><option>ultra</option></select></label>
+            <div class="main-fast"><span>Fast 模式</span><label class="check"><input id="mainFast" type="checkbox">优先快速服务档位</label><small>写入 service_tier = fast 和 features.fast_mode；CPA 实际档位与计费取决于上游。</small></div>
           </div>
         </article>
         <article class="card">
           <div class="card-head"><div><h3>子代理矩阵</h3><p>点击角色名称查看职责、适用场景和配置详情；跟随模式会在保存时使用主代理模型。</p></div><div class="actions"><label class="check"><input id="protectSpecial" type="checkbox" checked>保护 Gemini 角色</label><button id="addAgentButton" class="btn primary">新增角色</button><button id="followAllButton" class="btn">全部跟随主代理</button></div></div>
-          <div class="table-wrap"><table><thead><tr><th>角色</th><th>模式</th><th>目标模型</th><th>推理强度</th><th>状态</th></tr></thead><tbody id="agentsBody"></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>角色</th><th>模式</th><th>目标模型</th><th>推理强度</th><th>子代理连接</th><th>状态</th></tr></thead><tbody id="agentsBody"></tbody></table></div>
+          <p class="transport-note">“跟随线路”使用主 provider 的连接设置；WebSocket / HTTP 会为此角色创建同地址的独立 provider。WebSocket 需 CPA 上游实际支持，开关不等于握手成功。</p>
           <div id="pendingSummary" class="pending">没有待保存的更改</div>
         </article>
       </section>

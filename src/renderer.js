@@ -25,7 +25,7 @@ function renderHealth(ok,label){const h=$("#cpaHealth");h.className=`health ${ok
 function renderMain(){
   const main=state.workspace.main,profile=activeProfile();$("#mainConfigPath").textContent=main.filePath;
   $("#activeProfileSelect").innerHTML=state.profiles.map(item=>`<option value="${escapeHtml(item.id)}" ${item.id===state.activeProfileId?"selected":""}>${escapeHtml(item.name)} · ${escapeHtml(item.providerId)}</option>`).join("");
-  $("#mainModel").innerHTML=modelOptions(main.model);$("#mainProvider").value=profile?.providerId||main.provider;$("#mainEffort").value=main.reasoningEffort
+  $("#mainModel").innerHTML=modelOptions(main.model);$("#mainProvider").value=profile?.providerId||main.provider;$("#mainEffort").value=main.reasoningEffort;$("#mainFast").checked=["fast","priority"].includes(main.serviceTier)
 }
 
 function renderProfiles(){
@@ -50,7 +50,7 @@ async function activateProfile(id){
   state.activeProfileId=id;state.selectedProfileId=id;state.models=[];$("#mainProvider").value=profile.providerId;$("#transportStatus").textContent=`传输：${profile.transportMode==="websocket"?"WebSocket":profile.transportMode==="auto"?"自动检测":"HTTP 流式"}`;renderMain();renderProfiles();setDirty();
   try{const saved=await window.cpaSwitcher.saveSettings({profiles:state.profiles,activeProfileId:id,autoRestartCodex:false});state.profiles=saved.profiles;await refreshModels()}catch(error){showToast(error.message,"error")}
 }
-function createAgentDraft(agent){return{...agent,follow:agent.model===state.workspace.main.model&&agent.provider===state.workspace.main.provider,protected:specialRoles.has(agent.name),targetModel:agent.model,targetEffort:agent.reasoningEffort}}
+function createAgentDraft(agent){return{...agent,follow:agent.model===state.workspace.main.model&&(agent.baseProvider||agent.provider)===state.workspace.main.provider,protected:specialRoles.has(agent.name),targetModel:agent.model,targetEffort:agent.reasoningEffort,targetTransport:agent.transportOverride||"inherit"}}
 function roleInfo(role){const id=typeof role==="string"?role:role.id||role.name;const known=roleCatalog[id];if(known)return known;const description=typeof role==="object"?role.description:"";return{title:"自定义角色",summary:description||"用户创建的专用子代理角色。",uses:["按职责说明执行专门的只读任务","使用独立的模型、推理强度和沙箱设置"]}}
 function renderAgents(){
   const mainModel=$("#mainModel").value;
@@ -59,7 +59,7 @@ function renderAgents(){
     const badge=a.protected?'<span class="badge violet">专用角色</span>':a.follow?'<span class="badge blue">跟随</span>':'<span class="badge gray">独立</span>';
     const efforts=["none","low","medium","high","xhigh","max","ultra"].map(v=>`<option ${a.targetEffort===v?"selected":""}>${v}</option>`).join("");
     const info=roleInfo(a);
-    return `<tr data-index="${i}"><td class="role"><button class="role-link" type="button"><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(info.title)} · ${escapeHtml(info.summary)}</small></button></td><td><label class="mode"><input class="agent-follow" type="checkbox" ${a.follow?"checked":""}><span>${a.follow?"跟随":"独立"}</span></label></td><td><select class="agent-model" ${a.follow?"disabled":""}>${modelOptions(effective)}</select></td><td><select class="agent-effort">${efforts}</select></td><td>${badge}</td></tr>`
+    return `<tr data-index="${i}"><td class="role"><button class="role-link" type="button"><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(info.title)} · ${escapeHtml(info.summary)}</small></button></td><td><label class="mode"><input class="agent-follow" type="checkbox" ${a.follow?"checked":""}><span>${a.follow?"跟随":"独立"}</span></label></td><td><select class="agent-model" ${a.follow?"disabled":""}>${modelOptions(effective)}</select></td><td><select class="agent-effort">${efforts}</select></td><td><select class="agent-transport"><option value="inherit" ${a.targetTransport==="inherit"?"selected":""}>跟随线路</option><option value="websocket" ${a.targetTransport==="websocket"?"selected":""}>WebSocket</option><option value="http" ${a.targetTransport==="http"?"selected":""}>HTTP 流式</option></select></td><td>${badge}</td></tr>`
   }).join("");
   $$("#agentsBody tr").forEach(row=>{
     const draft=state.agentDrafts[Number(row.dataset.index)];
@@ -67,6 +67,7 @@ function renderAgents(){
     row.querySelector(".agent-follow").addEventListener("change",e=>{draft.follow=e.target.checked;if(draft.follow)draft.targetModel=$("#mainModel").value;setDirty();renderAgents()});
     row.querySelector(".agent-model").addEventListener("change",e=>{draft.targetModel=e.target.value;setDirty()});
     row.querySelector(".agent-effort").addEventListener("change",e=>{draft.targetEffort=e.target.value;setDirty()});
+    row.querySelector(".agent-transport").addEventListener("change",e=>{draft.targetTransport=e.target.value;setDirty()});
   });
 }
 
@@ -155,14 +156,16 @@ function gatherPayload(){
   const profile=activeProfile();const mode=profile?.transportMode||"http";
   const supportsWs=mode==="auto"?(state.lastWsResult?.ok??state.workspace.main.connection.supportsWebsockets):mode==="websocket";
   const provider=profile?.providerId||$("#mainProvider").value.trim()||"cpa_direct";
-  return{paths:state.workspace.paths,main:{provider,model:$("#mainModel").value,reasoningEffort:$("#mainEffort").value},catalogModels:state.models.map(item=>item.id),connection:{profileId:profile?.id,name:profile?.name,baseUrl:profile?.baseUrl,apiKey:undefined,supportsWebsockets:supportsWs,transportMode:mode},agents:state.agentDrafts.map(a=>({filePath:a.filePath,originalHash:a.hash,provider,model:a.follow?$("#mainModel").value:a.targetModel,reasoningEffort:a.targetEffort})),reason:`切换线路 ${profile?.name||provider}，主代理 -> ${$("#mainModel").value}`}
+  return{paths:state.workspace.paths,main:{provider,model:$("#mainModel").value,reasoningEffort:$("#mainEffort").value,serviceTier:$("#mainFast").checked?"fast":"default"},catalogModels:state.models.map(item=>item.id),connection:{profileId:profile?.id,name:profile?.name,baseUrl:profile?.baseUrl,apiKey:undefined,supportsWebsockets:supportsWs,transportMode:mode},agents:state.agentDrafts.map(a=>({filePath:a.filePath,originalHash:a.hash,provider,model:a.follow?$("#mainModel").value:a.targetModel,reasoningEffort:a.targetEffort,transportOverride:a.targetTransport})),reason:`切换线路 ${profile?.name||provider}，主代理 -> ${$("#mainModel").value}`}
 }
 
 function changePreview(){
   const lines=[],newModel=$("#mainModel").value,main=state.workspace.main;
   if(newModel!==main.model)lines.push(`<div class="change-line"><b>主代理</b> ${escapeHtml(main.model)} → ${escapeHtml(newModel)}</div>`);
   if($("#mainEffort").value!==main.reasoningEffort)lines.push(`<div class="change-line"><b>主代理强度</b> ${escapeHtml(main.reasoningEffort)} → ${escapeHtml($("#mainEffort").value)}</div>`);
+  const tier=$("#mainFast").checked?"fast":"default";if(tier!==main.serviceTier)lines.push(`<div class="change-line"><b>Fast 档位</b> ${escapeHtml(main.serviceTier)} → ${tier}</div>`);
   for(const a of state.agentDrafts){const target=a.follow?newModel:a.targetModel;if(target!==a.model||a.targetEffort!==a.reasoningEffort)lines.push(`<div class="change-line"><b>${escapeHtml(a.name)}</b> ${escapeHtml(a.model)} → ${escapeHtml(target)} · ${escapeHtml(a.targetEffort)}</div>`)}
+  for(const a of state.agentDrafts){if(a.targetTransport!==a.transportOverride)lines.push(`<div class="change-line"><b>${escapeHtml(a.name)} 连接</b> ${escapeHtml(a.transportOverride)} → ${escapeHtml(a.targetTransport)}</div>`)}
   return lines.length?lines.join(""):'<div class="muted">连接或传输配置将被更新。</div>'
 }
 
@@ -281,6 +284,7 @@ function bindEvents(){
   $("#activeProfileSelect").addEventListener("change",event=>activateProfile(event.target.value));
   $("#mainModel").addEventListener("change",()=>{for(const a of state.agentDrafts)if(a.follow)a.targetModel=$("#mainModel").value;setDirty();renderAgents()});
   $("#mainEffort").addEventListener("change",()=>setDirty());
+  $("#mainFast").addEventListener("change",()=>setDirty());
   $("#addAgentButton").addEventListener("click",openNewRole);
   $("#closeRoleButton").addEventListener("click",closeRoleModal);$("#cancelRoleButton").addEventListener("click",closeRoleModal);$("#saveRoleButton").addEventListener("click",saveRole);
   $("#roleId").addEventListener("input",updateRolePreview);$("#roleDescription").addEventListener("input",updateRolePreview);

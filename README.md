@@ -30,7 +30,9 @@
 | 你想做什么 | CPA Model Switcher 会做什么 |
 |---|---|
 | 切换主代理模型 | 修改 `config.toml`，可选择保存后自动重启 Codex |
+| 切换 Fast 模式 | 设置 `service_tier = "fast"` 与 `[features].fast_mode`；实际加速取决于模型/CPA |
 | 给不同子代理分配模型 | 扫描和管理 `agents/*.toml`，支持跟随主代理或独立模型 |
+| 为子代理单独选 WebSocket/HTTP | 为角色创建同 CPA 地址的独立 provider；可随时切回“跟随线路” |
 | 让 CPA 模型出现在 Codex 模型目录 | 根据 `/models` 动态生成 `cpa-model-switcher-catalog.json` |
 | 管理多个 CPA | 保存多条线路，分别配置地址、API Key 和传输方式 |
 | 排查 400、WebSocket、压缩问题 | 提供 HTTP、WebSocket 和 `/responses/compact` 单项诊断 |
@@ -56,7 +58,9 @@
 在 **模型切换** 页面：
 
 - 选择主代理模型与推理强度；
+- 按需开启 Fast 模式；这只是服务档位偏好，上游可能不支持或另行计费；
 - 为每个子代理选择“跟随主代理”或独立模型；
+- 在“子代理连接”选择跟随线路、WebSocket 或 HTTP 流式；
 - 点击角色名称查看职责、适用场景、沙箱模式和配置文件；
 - 需要时创建新的自定义角色。
 
@@ -100,6 +104,7 @@ flowchart LR
 
 - 不覆盖、不删除其他工具维护的模型目录。
 - 支持保存后自动定位并重启 Codex Desktop 主进程。
+- Fast 开关同时控制 `service_tier` 与 `[features].fast_mode`，只影响之后的新回合；子代理可能继承这个全局偏好。
 
 ### 子代理矩阵
 
@@ -109,6 +114,7 @@ flowchart LR
 - 可保护视觉与文档角色，避免批量切换。
 - 点击角色名称查看中文用途和完整配置。
 - 创建自定义角色并自动注册 `[agents.<role_id>]`。
+- 每个角色可单独选 WebSocket 或 HTTP：程序复制当前 CPA provider 配置为角色专用 ID，保留地址与认证，只改变 `supports_websockets`；“跟随线路”不创建专用路由。
 
 ### 多线路 CPA
 
@@ -215,11 +221,11 @@ release/SHA256SUMS.txt
 - 使用仓库自带的 `GITHUB_TOKEN`，无需额外 Personal Access Token。
 
 ```powershell
-npm version 0.6.0 --no-git-tag-version
+npm version 0.7.0 --no-git-tag-version
 git add package.json package-lock.json
-git commit -m "chore: release v0.6.0"
-git tag -a v0.6.0 -m "CPA Model Switcher v0.6.0"
-git push origin main v0.6.0
+git commit -m "chore: release v0.7.0"
+git tag -a v0.7.0 -m "CPA Model Switcher v0.7.0"
+git push origin main v0.7.0
 ```
 
 ## 测试范围

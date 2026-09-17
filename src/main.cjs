@@ -56,11 +56,13 @@ function createWindow() {
             restartBridgeReady: typeof window.cpaSwitcher?.restartCodex === 'function',
             restartUiReady: Boolean(document.querySelector('#confirmApplyRestartButton')),
             logBridgeReady: typeof window.cpaSwitcher?.openLog === 'function',
-            logUiReady: Boolean(document.querySelector('#openLogButton'))
+            logUiReady: Boolean(document.querySelector('#openLogButton')),
+            fastUiReady: Boolean(document.querySelector('#mainFast')),
+            agentTransportUiReady: document.querySelectorAll('.agent-transport').length > 0
           };
         })()`);
         console.log(`SMOKE_RESULT ${JSON.stringify(result)}`);
-        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.logBridgeReady && result.logUiReady && result.agentCount >= 1 ? 0 : 2);
+        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.logBridgeReady && result.logUiReady && result.fastUiReady && result.agentTransportUiReady && result.agentCount >= 1 ? 0 : 2);
       } catch (error) {
         console.error(`SMOKE_ERROR ${error.stack || error.message}`);
         app.exit(1);
@@ -408,6 +410,7 @@ function registerIpc() {
     logEvent("config.apply.request", {
       provider: payload.main?.provider,
       model: payload.main?.model,
+      serviceTier: payload.main?.serviceTier,
       agentCount: payload.agents?.length || 0,
       catalogModelCount: payload.catalogModels?.length || 0,
     });
@@ -441,6 +444,7 @@ function registerIpc() {
     logEvent("config.apply.success", {
       provider: payload.main?.provider,
       model: payload.main?.model,
+      serviceTier: payload.main?.serviceTier,
       snapshotId: result.snapshot?.id,
       catalogPath: result.modelCatalog?.filePath,
       catalogModelCount: result.modelCatalog?.generatedCount,

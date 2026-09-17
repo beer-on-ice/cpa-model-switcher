@@ -101,6 +101,58 @@ test("creates and activates a new provider section", () => {
   assert.match(child, /model_provider = "cpa_backup"/);
 });
 
+test("Fast preference writes service_tier and can be switched off", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory };
+  const payload = { paths, main: { provider: "cpa_direct", model: "gpt-fast", reasoningEffort: "high", serviceTier: "fast" }, connection: {}, agents: [] };
+  service.applyConfiguration(payload, ws.backupRoot);
+  assert.equal(service.parseMainConfig(ws.mainConfigPath).serviceTier, "fast");
+  assert.match(fs.readFileSync(ws.mainConfigPath, "utf8"), /\[features\][\s\S]*fast_mode = true/);
+  service.applyConfiguration({ ...payload, main: { ...payload.main, serviceTier: "default" } }, ws.backupRoot);
+  assert.equal(service.parseMainConfig(ws.mainConfigPath).serviceTier, "default");
+  assert.match(fs.readFileSync(ws.mainConfigPath, "utf8"), /\[features\][\s\S]*fast_mode = false/);
+});
+
+test("independent subagent WebSocket and HTTP providers preserve the base provider", () => {
+  const ws = tempWorkspace();
+  const secondPath = path.join(ws.agentsDirectory, "research.toml");
+  fs.writeFileSync(secondPath, 'name = "research"\nmodel_provider = "cpa_direct"\nmodel = "grok-4.6"\n', "utf8");
+  const mainBefore = fs.readFileSync(ws.mainConfigPath, "utf8");
+  const first = service.parseAgentFile(ws.agentPath);
+  const second = service.parseAgentFile(secondPath);
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory };
+  const payload = {
+    paths,
+    main: { provider: "cpa_direct", model: "gpt-main", reasoningEffort: "high", serviceTier: "fast" },
+    connection: { supportsWebsockets: false },
+    agents: [
+      { filePath: ws.agentPath, originalHash: first.hash, provider: "cpa_direct", model: "gpt-child", reasoningEffort: "high", transportOverride: "websocket" },
+      { filePath: secondPath, originalHash: second.hash, provider: "cpa_direct", model: "grok-4.6", reasoningEffort: "high", transportOverride: "http" },
+    ],
+  };
+  service.applyConfiguration(payload, ws.backupRoot);
+  const main = fs.readFileSync(ws.mainConfigPath, "utf8");
+  const firstAlias = service.agentProviderId("cpa_direct", ws.agentPath);
+  const secondAlias = service.agentProviderId("cpa_direct", secondPath);
+  assert.match(main, /\[model_providers\.cpa_direct\][\s\S]*?supports_websockets = false/);
+  assert.match(main, new RegExp(`\\[model_providers\\.${firstAlias}\\][\\s\\S]*?supports_websockets = true`));
+  assert.match(main, new RegExp(`\\[model_providers\\.${secondAlias}\\][\\s\\S]*?supports_websockets = false`));
+  assert.match(fs.readFileSync(ws.agentPath, "utf8"), new RegExp(`model_provider = "${firstAlias}"`));
+  assert.match(fs.readFileSync(secondPath, "utf8"), new RegExp(`model_provider = "${secondAlias}"`));
+  assert.match(mainBefore, /# keep-main-comment/);
+  const loaded = service.loadWorkspace(paths);
+  assert.equal(loaded.agents.find((a) => a.id === "default").transportOverride, "websocket");
+  assert.equal(loaded.agents.find((a) => a.id === "research").transportOverride, "http");
+
+  const updatedFirst = service.parseAgentFile(ws.agentPath);
+  service.applyConfiguration({
+    ...payload,
+    agents: [{ filePath: ws.agentPath, originalHash: updatedFirst.hash, provider: "cpa_direct", model: "gpt-child", reasoningEffort: "high", transportOverride: "inherit" }],
+  }, ws.backupRoot);
+  assert.equal(service.loadWorkspace(paths).agents.find((a) => a.id === "default").transportOverride, "inherit");
+  assert.match(fs.readFileSync(ws.agentPath, "utf8"), /model_provider = "cpa_direct"/);
+});
+
 test("generates an independent model catalog from the active CPA model list", () => {
   const ws = tempWorkspace();
   const legacyCatalogPath = path.join(ws.codexHome, "cc-switch-model-catalog.json");

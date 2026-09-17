@@ -109,6 +109,27 @@ function updateSection(text, sectionName, updates) {
   return `${text.slice(0, bounds.bodyStart)}${body}${text.slice(bounds.end)}`;
 }
 
+function agentProviderId(provider, filePath) {
+  const role = path.basename(filePath, ".toml").replace(/[^A-Za-z0-9_-]/g, "_");
+  const suffix = crypto.createHash("sha256").update(path.resolve(filePath).toLowerCase()).digest("hex").slice(0, 8);
+  return `${provider}__subagent_${role}_${suffix}`;
+}
+
+function upsertAgentProvider(mainText, provider, agentFilePath, supportsWebsockets) {
+  const source = readSection(mainText, `model_providers.${provider}`);
+  if (!source || !readTomlKey(source, "base_url")) {
+    throw new Error(`无法为子代理配置独立连接：提供方 ${provider} 缺少 base_url。`);
+  }
+  const alias = agentProviderId(provider, agentFilePath);
+  const header = `model_providers.${alias}`;
+  const copied = updateSection(`[${header}]\n${source.trimEnd()}\n`, header, {
+    supports_websockets: supportsWebsockets,
+  });
+  const bounds = sectionBounds(mainText, header);
+  if (!bounds) return { alias, text: `${mainText.trimEnd()}\n\n${copied}` };
+  return { alias, text: `${mainText.slice(0, bounds.start)}${copied}${mainText.slice(bounds.end)}` };
+}
+
 function parseMainConfig(mainConfigPath) {
   const text = fs.readFileSync(mainConfigPath, "utf8");
   const top = splitTopLevel(text).top;
@@ -119,6 +140,7 @@ function parseMainConfig(mainConfigPath) {
     provider,
     model: String(readTomlKey(top, "model") || ""),
     reasoningEffort: String(readTomlKey(top, "model_reasoning_effort") || "high"),
+    serviceTier: String(readTomlKey(top, "service_tier") || "default"),
     sandboxMode: String(readTomlKey(top, "sandbox_mode") || ""),
     connection: {
       name: String(readTomlKey(providerSection, "name") || provider),
@@ -152,12 +174,25 @@ function parseAgentFile(filePath) {
   };
 }
 
-function listAgents(agentsDirectory) {
+function listAgents(agentsDirectory, mainText = "") {
   if (!fs.existsSync(agentsDirectory)) return [];
   return fs
     .readdirSync(agentsDirectory, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".toml"))
-    .map((entry) => parseAgentFile(path.join(agentsDirectory, entry.name)))
+    .map((entry) => {
+      const agent = parseAgentFile(path.join(agentsDirectory, entry.name));
+      const alias = agent.provider.match(/^(.*?)__subagent_[A-Za-z0-9_-]+_([a-f0-9]{8})$/);
+      if (!alias || agent.provider !== agentProviderId(alias[1], agent.filePath)) {
+        return { ...agent, baseProvider: agent.provider, transportOverride: "inherit" };
+      }
+      const section = readSection(mainText, `model_providers.${agent.provider}`);
+      const enabled = readTomlKey(section, "supports_websockets");
+      return {
+        ...agent,
+        baseProvider: alias[1],
+        transportOverride: enabled === true ? "websocket" : enabled === false ? "http" : "inherit",
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -167,7 +202,7 @@ function loadWorkspace(customPaths = {}) {
     throw new Error(`Codex 主配置不存在：${paths.mainConfigPath}`);
   }
   const main = parseMainConfig(paths.mainConfigPath);
-  const agents = listAgents(paths.agentsDirectory);
+  const agents = listAgents(paths.agentsDirectory, main.rawText);
   return {
     paths,
     main: { ...main, connection: { ...main.connection, apiKey: undefined } },
@@ -410,6 +445,9 @@ function applyConfiguration(payload, backupRoot) {
     paths.codexHome = path.dirname(customPaths.mainConfigPath);
   }
   const touchedAgents = (payload.agents || []).map((agent) => agent.filePath);
+  if (payload.main.serviceTier !== undefined && !["default", "fast"].includes(payload.main.serviceTier)) {
+    throw new Error(`不支持的服务档位：${payload.main.serviceTier}`);
+  }
   let mainText = fs.readFileSync(paths.mainConfigPath, "utf8");
   const catalog = prepareModelCatalog(
     mainText,
@@ -428,7 +466,11 @@ function applyConfiguration(payload, backupRoot) {
     model_provider: payload.main.provider,
     model: payload.main.model,
     model_reasoning_effort: payload.main.reasoningEffort,
+    service_tier: payload.main.serviceTier,
   });
+  if (payload.main.serviceTier !== undefined) {
+    mainText = updateSection(mainText, "features", { fast_mode: payload.main.serviceTier === "fast" });
+  }
 
   const providerUpdates = {};
   if (payload.connection?.name) providerUpdates.name = payload.connection.name;
@@ -453,8 +495,18 @@ function applyConfiguration(payload, backupRoot) {
         throw new Error(`${path.basename(agent.filePath)} 已被其他程序修改，请重新加载后再保存。`);
       }
     }
+    const transport = agent.transportOverride || "inherit";
+    if (!["inherit", "websocket", "http"].includes(transport)) {
+      throw new Error(`不支持的子代理连接方式：${transport}`);
+    }
+    let provider = agent.provider;
+    if (transport !== "inherit") {
+      const result = upsertAgentProvider(mainText, provider, agent.filePath, transport === "websocket");
+      provider = result.alias;
+      mainText = result.text;
+    }
     text = updateTopLevel(text, {
-      model_provider: agent.provider,
+      model_provider: provider,
       model: agent.model,
       model_reasoning_effort: agent.reasoningEffort,
     });
@@ -516,6 +568,8 @@ module.exports = {
   replaceTomlKey,
   updateTopLevel,
   updateSection,
+  agentProviderId,
+  upsertAgentProvider,
   parseMainConfig,
   parseAgentFile,
   listAgents,

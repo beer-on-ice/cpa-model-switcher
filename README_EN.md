@@ -28,7 +28,9 @@
 | What you want | What the application does |
 |---|---|
 | Switch the main-agent model | Updates `config.toml` and can restart Codex automatically |
+| Toggle Fast mode | Sets `service_tier = "fast"` and `[features].fast_mode`; actual speed depends on the model and CPA |
 | Assign models to subagents | Discovers `agents/*.toml` and supports follow-main or independent models |
+| Choose WebSocket/HTTP per subagent | Creates a role-specific provider with the same CPA endpoint; roles may follow the base profile instead |
 | Make CPA models visible | Generates `cpa-model-switcher-catalog.json` from `/models` |
 | Manage multiple CPA endpoints | Stores endpoints, API keys, provider IDs, and transports |
 | Diagnose failures | Tests HTTP, WebSocket, and `/responses/compact` |
@@ -44,6 +46,8 @@ Open **Provider Profiles**, enter the provider ID, `/v1` endpoint, API key, and 
 ### 2. Assign models
 
 Open **Model Switcher** to choose the main model and reasoning effort. Each subagent can follow the main agent or use an independent model. Click a role to inspect its responsibility, sandbox, and configuration file.
+
+Fast mode is a service-tier preference, not a guaranteed speed boost. A CPA provider may reject, ignore, or bill it differently. The subagent connection selector offers **Follow profile**, **WebSocket**, and **HTTP streaming**. An independent choice uses a dedicated provider ID with copied endpoint/auth and a different `supports_websockets` value; it does not prove a successful WebSocket handshake.
 
 ### 3. Apply the configuration
 
@@ -78,8 +82,10 @@ flowchart LR
 - Change `model_provider`, `model`, and `model_reasoning_effort`.
 - Fetch the active CPA model list and generate `%USERPROFILE%\.codex\cpa-model-switcher-catalog.json`.
 - Preserve catalogs maintained by other tools.
+- Toggle Fast mode by updating both `service_tier` and `[features].fast_mode` for new turns. Subagents may inherit the global tier unless their role file overrides it.
 - Discover and manage `%USERPROFILE%\.codex\agents\*.toml`.
 - Assign independent models, follow the main agent, protect specialist roles, and create custom roles.
+- Select an independent WebSocket or HTTP transport for a role while leaving the main provider unchanged.
 
 ### Profiles and diagnostics
 
@@ -168,11 +174,11 @@ Workflow: [`.github/workflows/release.yml`](.github/workflows/release.yml)
 - The workflow uses the repository `GITHUB_TOKEN`; no Personal Access Token is required.
 
 ```powershell
-npm version 0.6.0 --no-git-tag-version
+npm version 0.7.0 --no-git-tag-version
 git add package.json package-lock.json
-git commit -m "chore: release v0.6.0"
-git tag -a v0.6.0 -m "CPA Model Switcher v0.6.0"
-git push origin main v0.6.0
+git commit -m "chore: release v0.7.0"
+git tag -a v0.7.0 -m "CPA Model Switcher v0.7.0"
+git push origin main v0.7.0
 ```
 
 ## Test coverage
