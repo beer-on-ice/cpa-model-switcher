@@ -23,7 +23,7 @@
 </p>
 
 > [!IMPORTANT]
-> 这是一个独立桌面程序，不注入、不修改 Codex Desktop 程序文件。只有在你确认后，它才会写入 `%USERPROFILE%\.codex` 下的配置，并且每次写入前都会创建恢复快照。
+> 这是一个独立桌面程序，不注入、不修改 Codex Desktop 程序文件。启动时会从当前 CPA `/models` 自动同步本工具的模型目录，可能写入 `%USERPROFILE%\.codex` 下的 `config.toml` 和目录 JSON；自动同步不创建快照。手动保存配置及逐模型设置前会创建恢复快照。
 
 ## 一眼看懂
 
@@ -33,7 +33,8 @@
 | 切换 Fast 模式 | 设置 `service_tier = "fast"` 与 `[features].fast_mode`；实际加速取决于模型/CPA |
 | 给不同子代理分配模型 | 扫描和管理 `agents/*.toml`，支持跟随主代理或独立模型 |
 | 为子代理单独选 WebSocket/HTTP | 为角色创建同 CPA 地址的独立 provider；可随时切回“跟随线路” |
-| 让 CPA 模型出现在 Codex 模型目录 | 根据 `/models` 动态生成 `cpa-model-switcher-catalog.json` |
+| 让 CPA 模型出现在 Codex 模型目录 | 启动和刷新时根据 `/models` 同步 `cpa-model-switcher-catalog.json` |
+| 逐模型调整上下文元数据 | 在「模型配置」设置显示名称、上下文窗口、最大窗口和有效比例 |
 | 管理多个 CPA | 保存多条线路，分别配置地址、API Key 和传输方式 |
 | 排查 400、WebSocket、压缩问题 | 提供 HTTP、WebSocket 和 `/responses/compact` 单项诊断 |
 | 防止改坏配置 | 写入前自动备份、哈希冲突检测、一键恢复 |
@@ -95,7 +96,7 @@ flowchart LR
 ### 主代理与模型目录
 
 - 切换 `model_provider`、`model` 和 `model_reasoning_effort`。
-- 从当前 CPA `/models` 获取完整模型列表。
+- 启动和手动刷新时从当前 CPA `/models` 获取模型列表并同步本工具的目录；CPA 离线时保留已有目录。
 - 动态生成：
 
 ```text
@@ -103,6 +104,8 @@ flowchart LR
 ```
 
 - 不覆盖、不删除其他工具维护的模型目录。
+- 「模型配置」按模型 ID 分别保存显示名称、`context_window`、`max_context_window`、`effective_context_window_percent`；再次同步时保留同 ID 的设置，新模型不会继承旧模型手动修改的窗口。
+- 这些是 Codex 本地目录元数据，不会提高 CPA/上游的实际上下文上限；设得过高可能导致请求被拒绝。保存后建议重启 Codex 并新建对话。逐模型保存会先创建可恢复快照；自动同步不创建快照。
 - 支持保存后自动定位并重启 Codex Desktop 主进程。
 - Fast 开关同时控制 `service_tier` 与 `[features].fast_mode`，只影响之后的新回合；子代理可能继承这个全局偏好。
 
@@ -175,7 +178,7 @@ flowchart LR
 - 启用 Electron `contextIsolation`，关闭 Renderer Node 集成。
 - API Key、WebDAV 密码和加密口令不会写入运行日志。
 - 配置使用临时文件和原子替换写入。
-- 写入前自动备份；恢复前再次备份。
+- 手动保存主/子代理及逐模型设置前自动备份；恢复前再次备份。启动时模型目录自动同步不备份。
 - WebDAV 只接收加密归档。
 - 不修改 Codex Desktop 安装目录。
 

@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("cpaSwitcher", {
   loadWorkspace: (paths) => ipcRenderer.invoke("workspace:load", paths),
   listModels: (request) => ipcRenderer.invoke("models:list", request),
+  syncModelCatalog: (request) => ipcRenderer.invoke("models:sync-catalog", request),
+  updateModelSettings: (request) => ipcRenderer.invoke("models:update-settings", request),
   testHttp: (request) => ipcRenderer.invoke("diagnostics:http", request),
   testWebSocket: (request) => ipcRenderer.invoke("diagnostics:websocket", request),
   testCompact: (request) => ipcRenderer.invoke("diagnostics:compact", request),

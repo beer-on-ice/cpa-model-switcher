@@ -1,6 +1,6 @@
 {
   "name": "cpa-model-switcher",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "Independent Codex main and subagent model switcher for CPA providers",
   "main": "src/main.cjs",
   "author": "MDSD",

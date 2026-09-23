@@ -21,7 +21,7 @@
 </p>
 
 > [!IMPORTANT]
-> This is a standalone application. It does not inject code into Codex Desktop or modify the Codex installation. Files under `%USERPROFILE%\.codex` change only after explicit confirmation, with a recovery snapshot created before every write.
+> This is a standalone application. It does not inject code into Codex Desktop or modify the Codex installation. At startup, the app syncs its own model catalog from the active CPA `/models` endpoint. This can update `%USERPROFILE%\.codex\config.toml` and the catalog JSON without a snapshot. Manually saving configuration or per-model settings creates a recovery snapshot first.
 
 ## At a glance
 
@@ -31,7 +31,8 @@
 | Toggle Fast mode | Sets `service_tier = "fast"` and `[features].fast_mode`; actual speed depends on the model and CPA |
 | Assign models to subagents | Discovers `agents/*.toml` and supports follow-main or independent models |
 | Choose WebSocket/HTTP per subagent | Creates a role-specific provider with the same CPA endpoint; roles may follow the base profile instead |
-| Make CPA models visible | Generates `cpa-model-switcher-catalog.json` from `/models` |
+| Make CPA models visible | Syncs `cpa-model-switcher-catalog.json` from `/models` at startup and on refresh |
+| Customize each model | Edit display name, context window, maximum window, and effective percentage in **Model Settings** |
 | Manage multiple CPA endpoints | Stores endpoints, API keys, provider IDs, and transports |
 | Diagnose failures | Tests HTTP, WebSocket, and `/responses/compact` |
 | Recover safely | Creates snapshots, detects hash conflicts, and restores files |
@@ -80,8 +81,10 @@ flowchart LR
 ### Models and subagents
 
 - Change `model_provider`, `model`, and `model_reasoning_effort`.
-- Fetch the active CPA model list and generate `%USERPROFILE%\.codex\cpa-model-switcher-catalog.json`.
+- Fetch the active CPA model list on startup and refresh, and generate `%USERPROFILE%\.codex\cpa-model-switcher-catalog.json`. If CPA is offline, keep the existing catalog.
 - Preserve catalogs maintained by other tools.
+- **Model Settings** edits `display_name`, `context_window`, `max_context_window`, and `effective_context_window_percent` per model ID. Refresh preserves exact-model customizations; new IDs do not inherit another model's edited window.
+- These are local Codex catalog metadata, not a way to increase the provider's actual limit. An excessive value can cause request failures. Restart Codex and start a new chat after editing. Manual per-model saves are snapshotted; automatic sync is not.
 - Toggle Fast mode by updating both `service_tier` and `[features].fast_mode` for new turns. Subagents may inherit the global tier unless their role file overrides it.
 - Discover and manage `%USERPROFILE%\.codex\agents\*.toml`.
 - Assign independent models, follow the main agent, protect specialist roles, and create custom roles.
@@ -100,7 +103,7 @@ flowchart LR
 
 ### Recovery and WebDAV
 
-- Snapshot configuration before every write and restore.
+- Snapshot manual main/subagent and per-model saves, and create a safety snapshot before restore. Startup catalog sync is not snapshotted.
 - Detect external changes with SHA-256 hashes.
 - Encrypt `.cpabackup` archives with AES-256-GCM.
 - List, download, decrypt, and restore remote WebDAV backups.
@@ -128,7 +131,7 @@ Application data:
 - Electron `contextIsolation` is enabled and Renderer Node integration is disabled.
 - Secrets are excluded from runtime logs.
 - Configuration files use temporary files and atomic replacement.
-- Snapshots are created before writes and restores.
+- Manual configuration and per-model saves are snapshotted before writing; restore also creates a safety snapshot. Startup catalog sync is not snapshotted.
 - WebDAV receives encrypted archives only.
 - The Codex Desktop installation directory is never modified.
 

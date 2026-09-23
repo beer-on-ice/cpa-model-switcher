@@ -217,16 +217,19 @@ function safeTimestamp(date = new Date()) {
 
 function createSnapshot(files, backupRoot, reason = "配置写入前自动备份") {
   fs.mkdirSync(backupRoot, { recursive: true });
-  const id = safeTimestamp();
+  const baseId = safeTimestamp();
+  let id = baseId;
+  for (let suffix = 1; fs.existsSync(path.join(backupRoot, id)); suffix++) id = `${baseId}-${suffix}`;
   const directory = path.join(backupRoot, id);
   fs.mkdirSync(directory, { recursive: true });
   const manifest = { id, createdAt: new Date().toISOString(), reason, files: [] };
 
   for (const filePath of [...new Set(files)]) {
     if (!fs.existsSync(filePath)) continue;
-    const relativeName = path.basename(filePath) === "config.toml"
-      ? "config.toml"
-      : path.join("agents", path.basename(filePath));
+    const basename = path.basename(filePath);
+    const relativeName = basename === "config.toml" || basename === "cpa-model-switcher-catalog.json"
+      ? basename
+      : path.join("agents", basename);
     const destination = path.join(directory, relativeName);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(filePath, destination);
@@ -272,10 +275,14 @@ function prepareModelCatalog(mainText, mainConfigPath, codexHome, modelIds) {
     : catalogPath;
   let sourceModels = [];
   if (fs.existsSync(sourcePath)) {
+    let sourceCatalog;
     try {
-      const sourceCatalog = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
-      if (Array.isArray(sourceCatalog.models)) sourceModels = sourceCatalog.models;
-    } catch {}
+      sourceCatalog = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+    } catch (error) {
+      throw new Error(`模型目录无法解析（${sourcePath}）：${error.message}`);
+    }
+    if (!Array.isArray(sourceCatalog.models)) throw new Error(`模型目录格式无效（${sourcePath}）：缺少 models 数组。`);
+    sourceModels = sourceCatalog.models.filter((item) => item && typeof item === "object");
   }
   const desiredIds = [...new Set((Array.isArray(modelIds) ? modelIds : [modelIds])
     .map((item) => String(item || "").trim())
@@ -284,17 +291,18 @@ function prepareModelCatalog(mainText, mainConfigPath, codexHome, modelIds) {
     const exact = sourceModels.find((item) => String(item.slug || "") === modelId);
     const family = modelFamily(modelId);
     const template = exact || sourceModels.find((item) => modelFamily(item.slug) === family) || sourceModels[0];
+    const defaultContextWindow = family === "gemini" ? 1048576 : 500000;
     const base = template ? JSON.parse(JSON.stringify(template)) : {
       additional_speed_tiers: [],
       availability_nux: null,
       base_instructions: "You are Codex, a coding agent. You and the user share the same workspace and collaborate to achieve the user's goals.",
-      context_window: family === "gemini" ? 1048576 : 500000,
+      context_window: defaultContextWindow,
       default_reasoning_level: "high",
       default_reasoning_summary: "none",
       effective_context_window_percent: 95,
       experimental_supported_tools: [],
       input_modalities: ["text", "image"],
-      max_context_window: family === "gemini" ? 1048576 : 500000,
+      max_context_window: defaultContextWindow,
       service_tiers: [],
       shell_type: "shell_command",
       support_verbosity: false,
@@ -314,8 +322,12 @@ function prepareModelCatalog(mainText, mainConfigPath, codexHome, modelIds) {
     return {
       ...base,
       slug: modelId,
-      display_name: modelId,
-      description: modelId,
+      display_name: exact?.display_name || modelId,
+      description: exact?.description || modelId,
+      // A new model must not inherit a different model's manually edited window.
+      context_window: exact?.context_window ?? defaultContextWindow,
+      max_context_window: exact?.max_context_window ?? defaultContextWindow,
+      effective_context_window_percent: exact?.effective_context_window_percent ?? 95,
       priority: 1000 + index,
       visibility: "list",
       supported_in_api: true,
@@ -329,6 +341,97 @@ function prepareModelCatalog(mainText, mainConfigPath, codexHome, modelIds) {
     content: `${JSON.stringify({ models }, null, 2)}\n`,
     generatedCount: models.length,
   };
+}
+
+function syncModelCatalog(customPaths = {}, modelIds = []) {
+  const custom = customPaths || {};
+  const paths = { ...defaultPaths(), ...custom };
+  if (!custom.codexHome && custom.mainConfigPath) {
+    paths.codexHome = path.dirname(custom.mainConfigPath);
+  }
+  const originalMainText = fs.readFileSync(paths.mainConfigPath, "utf8");
+  const catalog = prepareModelCatalog(
+    originalMainText,
+    paths.mainConfigPath,
+    paths.codexHome,
+    modelIds,
+  );
+  const existingCatalog = fs.existsSync(catalog.filePath)
+    ? fs.readFileSync(catalog.filePath, "utf8")
+    : null;
+  const catalogChanged = existingCatalog !== catalog.content;
+  const configChanged = originalMainText !== catalog.mainText;
+
+  if (catalogChanged) atomicWrite(catalog.filePath, catalog.content);
+  if (configChanged) atomicWrite(paths.mainConfigPath, catalog.mainText);
+
+  return {
+    filePath: catalog.filePath,
+    generatedCount: catalog.generatedCount,
+    changed: catalogChanged || configChanged,
+    catalogChanged,
+    configChanged,
+  };
+}
+
+function modelCatalogPath(customPaths = {}) {
+  const paths = { ...defaultPaths(), ...customPaths };
+  const codexHome = !customPaths.codexHome && customPaths.mainConfigPath
+    ? path.dirname(customPaths.mainConfigPath)
+    : paths.codexHome;
+  return path.join(codexHome, "cpa-model-switcher-catalog.json");
+}
+
+function readModelCatalogSettings(customPaths = {}) {
+  const filePath = modelCatalogPath(customPaths);
+  if (!fs.existsSync(filePath)) return { filePath, models: [] };
+  const catalog = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!Array.isArray(catalog.models)) throw new Error("模型目录格式无效：缺少 models 数组。");
+  return {
+    filePath,
+    models: catalog.models.filter((model) => model && typeof model.slug === "string").map((model) => ({
+      id: model.slug,
+      displayName: String(model.display_name || model.slug),
+      contextWindow: model.context_window,
+      maxContextWindow: model.max_context_window,
+      effectiveContextWindowPercent: model.effective_context_window_percent,
+    })),
+  };
+}
+
+function updateModelCatalogSettings(customPaths = {}, modelId, settings = {}, backupRoot) {
+  const filePath = modelCatalogPath(customPaths);
+  const id = String(modelId || "").trim();
+  if (!id || !fs.existsSync(filePath)) throw new Error("模型目录不存在，请先刷新 CPA 模型。");
+  const text = fs.readFileSync(filePath, "utf8");
+  const catalog = JSON.parse(text);
+  if (!Array.isArray(catalog.models)) throw new Error("模型目录格式无效：缺少 models 数组。");
+  const model = catalog.models.find((item) => item && item.slug === id);
+  if (!model) throw new Error(`模型 ${id} 不在当前目录中，请先刷新模型列表。`);
+
+  const integer = (value, name, min, max) => {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw new Error(`${name} 必须是 ${min}～${max} 的整数。`);
+    }
+    return value;
+  };
+  const contextWindow = integer(settings.contextWindow, "上下文窗口", 1, 100000000);
+  const maxContextWindow = integer(settings.maxContextWindow, "最大上下文窗口", 1, 100000000);
+  const effectiveContextWindowPercent = integer(settings.effectiveContextWindowPercent, "有效上下文比例", 1, 100);
+  if (maxContextWindow < contextWindow) throw new Error("最大上下文窗口不能小于上下文窗口。");
+  const displayName = String(settings.displayName || "").trim();
+  if (!displayName || displayName.length > 120) throw new Error("显示名称不能为空或超过 120 个字符。");
+
+  model.context_window = contextWindow;
+  model.max_context_window = maxContextWindow;
+  model.effective_context_window_percent = effectiveContextWindowPercent;
+  model.display_name = displayName;
+  const content = `${JSON.stringify(catalog, null, 2)}\n`;
+  if (content !== text) {
+    if (backupRoot) createSnapshot([filePath], backupRoot, `修改模型 ${id} 前自动备份`);
+    atomicWrite(filePath, content);
+  }
+  return readModelCatalogSettings(customPaths);
 }
 
 function normalizeRolePayload(payload = {}) {
@@ -576,6 +679,10 @@ module.exports = {
   loadWorkspace,
   createSnapshot,
   prepareModelCatalog,
+  syncModelCatalog,
+  modelCatalogPath,
+  readModelCatalogSettings,
+  updateModelCatalogSettings,
   createRole,
   updateRole,
   applyConfiguration,

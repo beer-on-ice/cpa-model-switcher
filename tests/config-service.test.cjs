@@ -188,6 +188,94 @@ test("generates an independent model catalog from the active CPA model list", ()
   assert.equal(fs.readFileSync(legacyCatalogPath, "utf8"), originalLegacy);
 });
 
+test("syncs a CPA model catalog at startup without creating a backup", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory };
+  const first = service.syncModelCatalog(paths, ["gpt-new", "claude-new"]);
+  const catalogPath = path.join(ws.codexHome, "cpa-model-switcher-catalog.json");
+  const generated = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+  const main = fs.readFileSync(ws.mainConfigPath, "utf8");
+  assert.equal(first.generatedCount, 2);
+  assert.equal(first.changed, true);
+  assert.deepEqual(generated.models.map((item) => item.slug), ["gpt-new", "claude-new"]);
+  assert.match(main, /model_catalog_json = "cpa-model-switcher-catalog\.json"/);
+  assert.equal(fs.existsSync(ws.backupRoot), false);
+
+  const second = service.syncModelCatalog(paths, ["gpt-new", "claude-new"]);
+  assert.equal(second.changed, false);
+  assert.equal(second.catalogChanged, false);
+  assert.equal(second.configChanged, false);
+});
+
+test("saves model-specific context settings and preserves them after CPA sync and apply", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath, agentsDirectory: ws.agentsDirectory };
+  service.syncModelCatalog(paths, ["gpt-new", "claude-new"]);
+  const before = service.readModelCatalogSettings(paths);
+  const otherBefore = before.models.find((item) => item.id === "claude-new");
+  const updated = service.updateModelCatalogSettings(paths, "gpt-new", {
+    displayName: "My GPT", contextWindow: 128000, maxContextWindow: 256000,
+    effectiveContextWindowPercent: 90,
+  });
+  assert.equal(updated.models.find((item) => item.id === "gpt-new").contextWindow, 128000);
+  assert.deepEqual(updated.models.find((item) => item.id === "claude-new"), otherBefore);
+  service.syncModelCatalog(paths, ["gpt-new", "claude-new"]);
+  const agent = service.parseAgentFile(ws.agentPath);
+  service.applyConfiguration({ paths, main: { provider: "cpa_direct", model: "gpt-new", reasoningEffort: "high" },
+    catalogModels: ["gpt-new", "claude-new"], connection: {},
+    agents: [{ filePath: ws.agentPath, originalHash: agent.hash, provider: "cpa_direct", model: "gpt-new", reasoningEffort: "high" }],
+  }, ws.backupRoot);
+  const after = service.readModelCatalogSettings(paths).models.find((item) => item.id === "gpt-new");
+  assert.equal(after.displayName, "My GPT");
+  assert.equal(after.contextWindow, 128000);
+  assert.equal(after.maxContextWindow, 256000);
+  assert.equal(after.effectiveContextWindowPercent, 90);
+  assert.throws(() => service.updateModelCatalogSettings(paths, "gpt-new", {
+    displayName: "x", contextWindow: 200, maxContextWindow: 100, effectiveContextWindowPercent: 90,
+  }), /不能小于/);
+  assert.throws(() => service.updateModelCatalogSettings(paths, "gpt-new", {
+    displayName: "x", contextWindow: 128.5, maxContextWindow: 256000, effectiveContextWindowPercent: 90,
+  }), /整数/);
+});
+
+test("new models do not inherit another model's customized context window", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath };
+  service.syncModelCatalog(paths, ["gpt-old"]);
+  service.updateModelCatalogSettings(paths, "gpt-old", {
+    displayName: "Custom", contextWindow: 32000, maxContextWindow: 64000, effectiveContextWindowPercent: 80,
+  });
+  service.syncModelCatalog(paths, ["gpt-old", "gpt-new"]);
+  const models = service.readModelCatalogSettings(paths).models;
+  assert.equal(models.find((item) => item.id === "gpt-old").contextWindow, 32000);
+  assert.equal(models.find((item) => item.id === "gpt-new").contextWindow, 500000);
+  assert.equal(models.find((item) => item.id === "gpt-new").effectiveContextWindowPercent, 95);
+});
+
+test("invalid catalog blocks synchronization without overwriting the original file", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath };
+  const filePath = service.modelCatalogPath(paths);
+  fs.writeFileSync(filePath, "{broken json", "utf8");
+  assert.throws(() => service.syncModelCatalog(paths, ["gpt-new"]), /模型目录无法解析/);
+  assert.equal(fs.readFileSync(filePath, "utf8"), "{broken json");
+  assert.throws(() => service.readModelCatalogSettings(paths), SyntaxError);
+});
+
+test("model settings save creates a restorable catalog snapshot", () => {
+  const ws = tempWorkspace();
+  const paths = { codexHome: ws.codexHome, mainConfigPath: ws.mainConfigPath };
+  service.syncModelCatalog(paths, ["gpt-new"]);
+  const original = fs.readFileSync(service.modelCatalogPath(paths), "utf8");
+  service.updateModelCatalogSettings(paths, "gpt-new", {
+    displayName: "Personal", contextWindow: 128000, maxContextWindow: 256000, effectiveContextWindowPercent: 90,
+  }, ws.backupRoot);
+  const snapshot = service.listSnapshots(ws.backupRoot)[0];
+  assert.equal(snapshot.files[0].backupPath, "cpa-model-switcher-catalog.json");
+  service.restoreSnapshot(snapshot.directory, ws.backupRoot);
+  assert.equal(fs.readFileSync(service.modelCatalogPath(paths), "utf8"), original);
+});
+
 test("creates a role file and registers it in the main config", () => {
   const ws = tempWorkspace();
   const result = service.createRole({

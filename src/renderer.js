@@ -10,7 +10,7 @@ const roleCatalog = {
   verifier:{title:"独立核验",summary:"独立复查关键事实、配置、代码结论和测试证据。",uses:["复核主代理的关键判断","确认配置是否真正生效","检查测试证据是否支持结论"]},
   architect:{title:"架构分析",summary:"分析模块边界、依赖、约束和方案取舍。",uses:["评估模块职责划分","分析依赖与耦合风险","比较多个实现方案的权衡"]},
 };
-const state = { workspace:null, models:[], agentDrafts:[], profiles:[], activeProfileId:"", selectedProfileId:"", dirty:false, backups:[], selectedBackup:null, remoteBackups:[], lastWsResult:null, roleEditor:null };
+const state = { workspace:null, models:[], agentDrafts:[], profiles:[], activeProfileId:"", selectedProfileId:"", dirty:false, backups:[], selectedBackup:null, remoteBackups:[], lastWsResult:null, roleEditor:null, modelCatalog:{models:[]}, selectedModelId:"", savingModelSettings:false };
 
 function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c])}
 function showToast(message,type=""){const toast=$("#toast");toast.textContent=message;toast.className=`toast ${type}`.trim();clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>toast.classList.add("hidden"),4200)}
@@ -134,21 +134,67 @@ async function saveRole(){
   }catch(error){showToast(error.message,"error");setStatus(`角色保存失败：${error.message}`)}finally{button.disabled=false}
 }
 
+function modelSettingEntries(){
+  const fromCatalog=state.modelCatalog?.models||[];
+  const ids=new Set([...state.models.map(item=>item.id),...fromCatalog.map(item=>item.id),state.workspace?.main.model].filter(Boolean));
+  return [...ids].sort((a,b)=>a.localeCompare(b)).map(id=>({id,settings:fromCatalog.find(item=>item.id===id)}));
+}
+
+function renderModelSettings(){
+  const warning=$("#modelCatalogWarning");
+  warning.textContent=state.modelCatalog?.error?`模型目录未能读取或同步：${state.modelCatalog.error}。请检查目录文件；程序不会自动覆盖损坏的文件。`:"";
+  warning.classList.toggle("hidden",!state.modelCatalog?.error);
+  const entries=modelSettingEntries();
+  if(!entries.some(item=>item.id===state.selectedModelId))state.selectedModelId=entries.find(item=>item.id===state.workspace?.main.model)?.id||entries[0]?.id||"";
+  const query=$("#modelSettingsSearch").value.trim().toLowerCase();
+  const filtered=entries.filter(item=>item.id.toLowerCase().includes(query)||(item.settings?.displayName||"").toLowerCase().includes(query));
+  $("#modelSettingsList").innerHTML=filtered.length?filtered.map(({id,settings})=>`<button type="button" class="model-settings-item ${id===state.selectedModelId?"active":""}" data-id="${escapeHtml(id)}"><strong>${escapeHtml(id)}</strong><small>${settings?`${escapeHtml(settings.contextWindow??"—")} Token${settings.displayName!==id?` · ${escapeHtml(settings.displayName)}`:""}`:"未同步到目录"}</small></button>`).join(""):'<p class="pending">没有匹配的模型</p>';
+  $$(".model-settings-item").forEach(button=>button.addEventListener("click",()=>{state.selectedModelId=button.dataset.id;renderModelSettings()}));
+  const current=entries.find(item=>item.id===state.selectedModelId);
+  const settings=current?.settings;
+  $("#modelSettingsTitle").textContent=settings?.displayName||current?.id||"选择模型";
+  $("#modelSettingsId").textContent=current?.id||"";
+  $("#modelDisplayName").value=settings?.displayName||current?.id||"";
+  $("#modelContextWindow").value=settings?.contextWindow??"";
+  $("#modelMaxContextWindow").value=settings?.maxContextWindow??"";
+  $("#modelEffectivePercent").value=settings?.effectiveContextWindowPercent??"";
+  $("#saveModelSettingsButton").disabled=!settings||state.savingModelSettings;
+  $("#openModelCatalogButton").disabled=!state.modelCatalog?.filePath;
+}
+
+async function saveModelSettings(){
+  const modelId=state.selectedModelId;
+  const button=$("#saveModelSettingsButton");if(!modelId||button.disabled)return;
+  const numberValue=(selector)=>{const value=$(selector).value.trim();return value?Number(value):NaN};
+  const settings={displayName:$("#modelDisplayName").value.trim(),contextWindow:numberValue("#modelContextWindow"),maxContextWindow:numberValue("#modelMaxContextWindow"),effectiveContextWindowPercent:numberValue("#modelEffectivePercent")};
+  state.savingModelSettings=true;button.disabled=true;
+  try{
+    state.modelCatalog=await window.cpaSwitcher.updateModelSettings({paths:state.workspace.paths,modelId,settings});
+    renderModelSettings();try{await refreshBackups()}catch{}showToast(`${modelId} 的模型配置已保存。重启 Codex 后新对话生效。`,"success");setStatus(`已保存 ${modelId} 的上下文配置。`)
+  }catch(error){showToast(error.message,"error");setStatus(`模型配置保存失败：${error.message}`)}finally{state.savingModelSettings=false;button.disabled=!modelSettingEntries().some(item=>item.id===state.selectedModelId&&item.settings)}
+}
+
 async function refreshModels(silent=false){
   const button=$("#refreshModelsButton");button.disabled=true;if(!silent)setStatus("正在从 CPA 获取模型……");
   try{
-    const result=await window.cpaSwitcher.listModels(connectionRequest());state.models=result.models;
+    const result=await window.cpaSwitcher.syncModelCatalog(connectionRequest());state.models=result.models;if(result.modelCatalog)state.modelCatalog=result.modelCatalog;if(result.catalog?.reason==="write-failed")state.modelCatalog={...state.modelCatalog,error:result.catalog.error};renderModelSettings();
     const selected=$("#mainModel").value||state.workspace.main.model;$("#mainModel").innerHTML=modelOptions(selected);renderAgents();
-    renderHealth(true,`${result.models.length} 个模型 · ${result.elapsedMs} ms`);$("#httpMetric").textContent=`${result.elapsedMs} ms`;$("#httpMetric").className="ok";$("#httpDetail").textContent=`HTTP ${result.status} · ${result.models.length} 个模型`;setStatus(`CPA 模型已刷新，共 ${result.models.length} 个。`)
+    const catalog=result.catalog||{};
+    const catalogMessage=catalog.synced
+      ? `；已同步 ${catalog.generatedCount} 个模型到 Codex 目录`
+      : catalog.reason==="write-failed"
+        ? `；目录同步失败：${catalog.error}`
+        : "";
+    renderHealth(true,`${result.models.length} 个模型 · ${result.elapsedMs} ms`);$("#httpMetric").textContent=`${result.elapsedMs} ms`;$("#httpMetric").className="ok";$("#httpDetail").textContent=`HTTP ${result.status} · ${result.models.length} 个模型`;if(!silent&&catalog.reason==="write-failed")showToast(`模型已刷新，但 Codex 目录同步失败：${catalog.error}`,"error");setStatus(`CPA 模型已刷新，共 ${result.models.length} 个。${catalogMessage}`)
   }catch(error){renderHealth(false,"CPA 连接失败");if(!silent)showToast(error.message,"error");setStatus(`CPA 连接失败：${error.message}`)}finally{button.disabled=false}
 }
 
 async function loadWorkspace(){
   setStatus("正在读取 Codex 配置……");
   try{
-    state.workspace=await window.cpaSwitcher.loadWorkspace();state.agentDrafts=state.workspace.agents.map(createAgentDraft);state.profiles=state.workspace.settings.profiles||[];state.activeProfileId=state.workspace.settings.activeProfileId||state.profiles[0]?.id||"";state.selectedProfileId=state.activeProfileId;
+    state.workspace=await window.cpaSwitcher.loadWorkspace();state.modelCatalog=state.workspace.modelCatalog;state.agentDrafts=state.workspace.agents.map(createAgentDraft);state.profiles=state.workspace.settings.profiles||[];state.activeProfileId=state.workspace.settings.activeProfileId||state.profiles[0]?.id||"";state.selectedProfileId=state.activeProfileId;
     $("#versionLabel").textContent=`v${state.workspace.version}`;const profile=activeProfile();$("#transportStatus").textContent=`传输：${profile?.transportMode==="websocket"?"WebSocket":profile?.transportMode==="auto"?"自动检测":"HTTP 流式"}`;$("#codexStatus").textContent=state.workspace.codex.running?`Codex：运行中${state.workspace.codex.pid?` · PID ${state.workspace.codex.pid}`:""}`:"Codex：未运行";
-    renderMain();renderProfiles();renderWebdavSettings();renderAgents();setDirty(false);await Promise.all([refreshModels(true),refreshBackups()]);setStatus("配置已加载。")
+    renderMain();renderProfiles();renderWebdavSettings();renderAgents();renderModelSettings();setDirty(false);await Promise.all([refreshModels(true),refreshBackups()]);if(!state.modelCatalog?.error)setStatus("配置已加载。")
   }catch(error){renderHealth(false,"配置加载失败");showToast(error.message,"error");setStatus(error.message)}
 }
 
@@ -281,6 +327,7 @@ async function deleteSelectedProfile(){
 function bindEvents(){
   $$(".nav").forEach(item=>item.addEventListener("click",()=>{$$(".nav").forEach(n=>n.classList.toggle("active",n===item));$$(".page").forEach(p=>p.classList.toggle("active",p.id===`page-${item.dataset.page}`))}));
   $("#reloadButton").addEventListener("click",loadWorkspace);$("#refreshModelsButton").addEventListener("click",()=>refreshModels());
+  $("#modelSettingsSearch").addEventListener("input",renderModelSettings);$("#saveModelSettingsButton").addEventListener("click",saveModelSettings);$("#openModelCatalogButton").addEventListener("click",()=>{if(state.modelCatalog?.filePath)window.cpaSwitcher.openPath(state.modelCatalog.filePath)});
   $("#activeProfileSelect").addEventListener("change",event=>activateProfile(event.target.value));
   $("#mainModel").addEventListener("change",()=>{for(const a of state.agentDrafts)if(a.follow)a.targetModel=$("#mainModel").value;setDirty();renderAgents()});
   $("#mainEffort").addEventListener("change",()=>setDirty());

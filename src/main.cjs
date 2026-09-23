@@ -51,6 +51,8 @@ function createWindow() {
             agentCount: workspace.agents.length,
             mainModel: workspace.main.model,
             bridgeReady: typeof window.cpaSwitcher?.listModels === 'function',
+            modelSettingsBridgeReady: typeof window.cpaSwitcher?.syncModelCatalog === 'function' && typeof window.cpaSwitcher?.updateModelSettings === 'function',
+            modelSettingsUiReady: Boolean(document.querySelector('#page-model-config') && document.querySelector('#modelContextWindow') && document.querySelector('#saveModelSettingsButton')),
             roleBridgeReady: typeof window.cpaSwitcher?.createRole === 'function' && typeof window.cpaSwitcher?.updateRole === 'function',
             roleUiReady: Boolean(document.querySelector('#addAgentButton') && document.querySelector('#roleModal')),
             restartBridgeReady: typeof window.cpaSwitcher?.restartCodex === 'function',
@@ -62,7 +64,7 @@ function createWindow() {
           };
         })()`);
         console.log(`SMOKE_RESULT ${JSON.stringify(result)}`);
-        app.exit(result.bridgeReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.logBridgeReady && result.logUiReady && result.fastUiReady && result.agentTransportUiReady && result.agentCount >= 1 ? 0 : 2);
+        app.exit(result.bridgeReady && result.modelSettingsBridgeReady && result.modelSettingsUiReady && result.roleBridgeReady && result.roleUiReady && result.restartBridgeReady && result.restartUiReady && result.logBridgeReady && result.logUiReady && result.fastUiReady && result.agentTransportUiReady && result.agentCount >= 1 ? 0 : 2);
       } catch (error) {
         console.error(`SMOKE_ERROR ${error.stack || error.message}`);
         app.exit(1);
@@ -316,6 +318,54 @@ async function listModels(request = {}) {
   return { models, elapsedMs, status: response.status, baseUrl: connection.baseUrl };
 }
 
+async function syncModelsToCatalog(request = {}) {
+  const result = await listModels(request);
+  if (!result.models.length) {
+    return {
+      ...result,
+      catalog: {
+        synced: false,
+        reason: "empty",
+        filePath: null,
+        generatedCount: 0,
+      },
+    };
+  }
+
+  const connection = getConnection(request);
+  const modelIds = [
+    ...result.models.map((item) => item.id),
+    connection.model,
+  ].filter(Boolean);
+  try {
+    const catalog = configService.syncModelCatalog(connection.paths, modelIds);
+    logEvent("models.catalog.sync", {
+      baseUrl: result.baseUrl,
+      modelCount: result.models.length,
+      generatedCount: catalog.generatedCount,
+      changed: catalog.changed,
+      catalogPath: catalog.filePath,
+    });
+    return { ...result, catalog: { synced: true, ...catalog }, modelCatalog: configService.readModelCatalogSettings(connection.paths) };
+  } catch (error) {
+    logEvent("models.catalog.sync.failure", {
+      baseUrl: result.baseUrl,
+      modelCount: result.models.length,
+      message: error.message,
+      stack: error.stack,
+    });
+    return {
+      ...result,
+      catalog: {
+        synced: false,
+        reason: "write-failed",
+        error: error.message,
+        filePath: null,
+        generatedCount: 0,
+      },
+    };
+  }
+}
 function websocketUrl(baseUrl) {
   const url = new URL(sanitizeBaseUrl(baseUrl));
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -380,6 +430,15 @@ async function testCompact(request = {}) {
   return { ok: response.ok, status: response.status, elapsedMs, detail: String(detail).slice(0, 500) };
 }
 
+function safeModelCatalogSettings(paths) {
+  try {
+    return configService.readModelCatalogSettings(paths);
+  } catch (error) {
+    logEvent("models.catalog.read.failure", { message: error.message });
+    return { filePath: configService.modelCatalogPath(paths), models: [], error: error.message };
+  }
+}
+
 function registerIpc() {
   ipcMain.handle("workspace:load", (_event, paths) => {
     const workspace = configService.loadWorkspace(paths || {});
@@ -390,9 +449,13 @@ function registerIpc() {
       settings: publicSettings(settings),
       codex: codexProcessService.codexStatus(),
       version: app.getVersion(),
+      modelCatalog: safeModelCatalogSettings(workspace.paths),
     };
   });
   ipcMain.handle("models:list", (_event, request) => listModels(request));
+  ipcMain.handle("models:sync-catalog", (_event, request) => syncModelsToCatalog(request));
+  ipcMain.handle("models:update-settings", (_event, request = {}) =>
+    configService.updateModelCatalogSettings(request.paths || {}, request.modelId, request.settings, backupRoot()));
   ipcMain.handle("diagnostics:websocket", (_event, request) => testWebSocket(request));
   ipcMain.handle("diagnostics:compact", (_event, request) => testCompact(request));
   ipcMain.handle("diagnostics:http", async (_event, request) => {
