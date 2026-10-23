@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage, shell, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -10,7 +10,7 @@ const webdavService = require("./webdav-service.cjs");
 let mainWindow;
 
 if (process.env.CPA_SWITCHER_SMOKE === "1") {
-  app.setPath("userData", path.join(os.tmpdir(), `cpa-model-switcher-smoke-${process.pid}`));
+  app.setPath("userData", process.env.CPA_SWITCHER_SMOKE_DATA || path.join(os.tmpdir(), `cpa-model-switcher-smoke-${process.pid}`));
 }
 
 function createWindow() {
@@ -44,6 +44,7 @@ function createWindow() {
       try {
         const result = await mainWindow.webContents.executeJavaScript(`(async () => {
           const workspace = await window.cpaSwitcher.loadWorkspace();
+          await window.cpaSwitcher.syncModelCatalog();
           return {
             title: document.title,
             navCount: document.querySelectorAll('.nav').length,
@@ -71,7 +72,7 @@ function createWindow() {
       }
     });
   }
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => { if (!smokeMode) mainWindow.show(); });
 }
 
 function settingsPath() {
@@ -99,6 +100,9 @@ function loadSettings() {
   if (!fs.existsSync(filePath)) return { profiles: [] };
   try {
     const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const hasEncryptedSecrets = data.encryptedApiKey || data.profiles?.some(profile => profile.encryptedApiKey)
+      || data.webdav?.encryptedPassword || data.webdav?.encryptedPassphrase;
+    if (hasEncryptedSecrets && !safeStorage.isEncryptionAvailable()) throw new Error("系统安全存储不可用。");
     let legacyApiKey = "";
     if (data.encryptedApiKey && safeStorage.isEncryptionAvailable()) {
       legacyApiKey = safeStorage.decryptString(Buffer.from(data.encryptedApiKey, "base64"));
@@ -137,8 +141,8 @@ function loadSettings() {
     delete data.encryptedApiKey;
     delete data.apiKey;
     return data;
-  } catch {
-    return { profiles: [] };
+  } catch (error) {
+    throw new Error("无法读取本地设置，请确认系统安全存储（macOS 钥匙串）可用。已有设置未被覆盖。", { cause: error });
   }
 }
 
@@ -151,7 +155,7 @@ function saveSettings(settings) {
     const stored = { ...profile };
     if (stored.apiKey) {
       if (!safeStorage.isEncryptionAvailable()) {
-        throw new Error("Windows 安全存储当前不可用，无法安全保存 API Key。配置文件仍可正常使用现有密钥。");
+        throw new Error("系统安全存储当前不可用，无法安全保存 API Key。配置文件仍可正常使用现有密钥。");
       }
       stored.encryptedApiKey = safeStorage.encryptString(stored.apiKey).toString("base64");
     }
@@ -161,7 +165,7 @@ function saveSettings(settings) {
   if (settings.webdav) {
     const webdav = { ...settings.webdav };
     if ((webdav.password || webdav.encryptionPassphrase) && !safeStorage.isEncryptionAvailable()) {
-      throw new Error("Windows 安全存储当前不可用，无法安全保存 WebDAV 凭据。 ");
+      throw new Error("系统安全存储当前不可用，无法安全保存 WebDAV 凭据。 ");
     }
     if (webdav.password) webdav.encryptedPassword = safeStorage.encryptString(webdav.password).toString("base64");
     if (webdav.encryptionPassphrase) webdav.encryptedPassphrase = safeStorage.encryptString(webdav.encryptionPassphrase).toString("base64");
@@ -579,6 +583,13 @@ function registerIpc() {
 app.whenReady().then(() => {
   app.setAppUserModelId("com.mdsd.cpa-model-switcher");
   logEvent("app.started", { version: app.getVersion() });
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: "appMenu" }, { role: "editMenu" },
+      { label: "显示", submenu: [{ role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }] },
+      { role: "windowMenu" },
+    ]));
+  }
   registerIpc();
   createWindow();
   app.on("activate", () => {

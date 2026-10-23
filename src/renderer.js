@@ -73,7 +73,7 @@ function renderAgents(){
 
 function roleFilePreview(id){
   const directory=state.workspace?.paths?.agentsDirectory||"";
-  return id?`${directory.replace(/[\\/]$/,"")}\\${id}.toml`:"保存后生成"
+  return id?`${directory.replace(/[\\/]$/,"")}${directory.includes("/")?"/":"\\"}${id}.toml`:"保存后生成"
 }
 
 function renderRoleGuide(id,description=""){
@@ -348,7 +348,7 @@ function bindEvents(){
   $("#testHttpButton").addEventListener("click",testHttp);$("#testWsButton").addEventListener("click",testWebSocket);$("#testCompactButton").addEventListener("click",testCompact);
   $("#runAllDiagnostics").addEventListener("click",async()=>{$("#diagnosticLog").innerHTML="";const ok=await testHttp();if(ok)await testWebSocket();if(ok)await testCompact();logDiagnostic("诊断序列结束。","ok")});
   $("#refreshBackupsButton").addEventListener("click",refreshBackups);
-  window.addEventListener("keydown",event=>{if(event.ctrlKey&&event.key.toLowerCase()==="s"){event.preventDefault();if(!$("#roleModal").classList.contains("hidden"))saveRole();else if(state.dirty)$("#applyButton").click()}if(event.ctrlKey&&event.key.toLowerCase()==="r"){event.preventDefault();refreshModels()}if(event.key==="Escape"){$("#confirmModal").classList.add("hidden");closeRoleModal()}})
+  window.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="s"){event.preventDefault();if(!$("#roleModal").classList.contains("hidden"))saveRole();else if(state.dirty)$("#applyButton").click()}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="r"){event.preventDefault();refreshModels()}if(event.key==="Escape"){$("#confirmModal").classList.add("hidden");closeRoleModal()}})
 }
 
 bindEvents();
