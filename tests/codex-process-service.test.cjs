@@ -88,7 +88,7 @@ test("parses macOS process paths containing spaces and joins command lines by PI
 
 test("macOS termination sends SIGTERM only to the desktop root", () => {
   const calls = [];
-  const result = service.terminateProcessTree(500, { platform: "darwin", kill: (...args) => calls.push(args) });
+  const result = service.terminateProcessTree(500, { platform: "darwin", listProcesses: () => [], kill: (...args) => calls.push(args) });
   assert.deepEqual(calls, [[500, "SIGTERM"]]);
   assert.equal(result.terminated, true);
 });
