@@ -5,18 +5,18 @@
 <h1 align="center">CPA Model Switcher</h1>
 
 <p align="center">
-  面向 Codex Desktop 的独立 Windows 模型与子代理配置工具
+  面向 Codex Desktop 的独立 Windows / macOS 模型与子代理配置工具
 </p>
 
 <p align="center">
   <a href="https://github.com/beer-on-ice/cpa-model-switcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/beer-on-ice/cpa-model-switcher?display_name=tag&sort=semver&style=flat-square"></a>
-  <a href="https://github.com/beer-on-ice/cpa-model-switcher/actions/workflows/release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/beer-on-ice/cpa-model-switcher/release.yml?style=flat-square&label=Windows%20build"></a>
+  <a href="https://github.com/beer-on-ice/cpa-model-switcher/actions/workflows/release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/beer-on-ice/cpa-model-switcher/release.yml?style=flat-square&label=Windows%20%2B%20macOS%20build"></a>
   <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11&logoColor=white">
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/beer-on-ice/cpa-model-switcher/releases/latest"><strong>下载最新 Windows 版本</strong></a>
+  <a href="https://github.com/beer-on-ice/cpa-model-switcher/releases/latest"><strong>下载最新 Windows / macOS 版本</strong></a>
   · <a href="README_EN.md">English</a>
   · <a href="#三步上手">快速上手</a>
   · <a href="#常见问题">常见问题</a>
@@ -24,6 +24,17 @@
 
 > [!IMPORTANT]
 > 这是一个独立桌面程序，不注入、不修改 Codex Desktop 程序文件。启动时会从当前 CPA `/models` 自动同步本工具的模型目录，可能写入 `%USERPROFILE%\.codex` 下的 `config.toml` 和目录 JSON；自动同步不创建快照。手动保存配置及逐模型设置前会创建恢复快照。
+
+## macOS 使用
+
+- 支持 macOS 13 及以上，提供 Apple Silicon（`arm64`，M 系列）和 Intel（`x64`）两种版本。
+- 打开对应架构的 DMG，把 **CPA Model Switcher.app** 拖入 **Applications**。ZIP 是同一应用的压缩版本。
+- 当前包没有 Apple Developer ID 签名和 Apple 公证。如果系统阻止打开，首次启动后到 **系统设置 → 隐私与安全性 → 仍要打开**，核实来源后确认。
+- 主配置在 `~/.codex/config.toml`，角色在 `~/.codex/agents/`；设置了 `CODEX_HOME` 时使用该目录。
+- 应用数据和日志在 `~/Library/Application Support/cpa-model-switcher/`。
+- 支持 `⌘S` 保存和 `⌘R` 刷新模型；菜单提供标准复制、粘贴和退出。
+- 自动重启通过 `codex app-server` 的父进程定位 Codex Desktop，支持 `Codex.app` / `ChatGPT.app` 及带空格的安装路径。
+- API Key、WebDAV 密码与加密口令通过 Electron `safeStorage` 使用 macOS 钥匙串。钥匙串不可用或解密失败时停止读取设置，避免把已有凭据覆盖为空。
 
 ## 一眼看懂
 
@@ -124,7 +135,7 @@ flowchart LR
 - 保存多条 OpenAI Responses API 兼容线路。
 - 为每条线路设置独立的 provider ID、地址、API Key 和传输模式。
 - 自动导入 Codex 当前使用的 provider。
-- API Key 的应用副本使用 Electron `safeStorage` 与 Windows 安全存储保护。
+- API Key 的应用副本使用 Electron `safeStorage` 与系统安全存储（macOS 使用钥匙串）保护。
 
 ### 连接诊断
 
@@ -153,7 +164,7 @@ flowchart LR
 - 自动或手动上传 `.cpabackup`。
 - 备份使用 AES-256-GCM 加密，不上传明文配置。
 - 支持远程列表、下载、解密和恢复。
-- WebDAV 密码与加密口令使用 Windows 安全存储保护。
+- WebDAV 密码与加密口令使用系统安全存储保护。
 
 ## 默认管理的文件
 
@@ -187,7 +198,7 @@ flowchart LR
 
 ## 系统要求
 
-- Windows 10/11 x64
+- Windows 10/11 x64，或 macOS 13+（Apple Silicon / Intel）
 - 已安装 Codex Desktop
 - 一个兼容 OpenAI Responses API 的 CPA 服务
 - 可选：支持 Basic Auth 的 WebDAV 服务
@@ -201,25 +212,39 @@ npm run smoke
 npm start
 ```
 
-构建便携 EXE：
+构建当前平台的安装包（Mac 生成两种架构的 DMG 和 ZIP；Windows 生成便携 EXE）：
 
-```powershell
+```sh
+npm ci
 npm run dist
 ```
 
-产物位置：
+也可明确选择平台，在相应平台机器运行：
+
+```sh
+npm run dist:mac
+npm run dist:win
+```
+
+Mac 产物：
 
 ```text
-release/CPA-Model-Switcher-<version>-x64.exe
+release/CPA-Model-Switcher-<version>-mac-arm64.dmg
+release/CPA-Model-Switcher-<version>-mac-arm64.zip
+release/CPA-Model-Switcher-<version>-mac-x64.dmg
+release/CPA-Model-Switcher-<version>-mac-x64.zip
 release/SHA256SUMS.txt
 ```
+
+Windows 产物为 `release/CPA-Model-Switcher-<version>-x64.exe`。
+`npm run smoke` 使用临时配置目录和本地模拟 CPA，不读取或修改真实 Codex 配置。
 
 ## 自动构建与发布
 
 工作流：[`.github/workflows/release.yml`](.github/workflows/release.yml)
 
-- 手动运行：生成 Windows x64 Actions 构建产物，不创建 Release。
-- 推送 `v*.*.*` 标签：自动测试、构建、生成 SHA-256 并发布 GitHub Release。
+- 手动运行：生成 Windows x64 和 macOS arm64/x64 Actions 构建产物，不创建 Release。
+- 推送 `v*.*.*` 标签：在 Windows 和 macOS 分别测试与构建，全部成功后汇总 SHA-256 并将所有平台产物发布到同一个 GitHub Release。
 - 标签版本必须与 `package.json` 一致。
 - 使用仓库自带的 `GITHUB_TOKEN`，无需额外 Personal Access Token。
 

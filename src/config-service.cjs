@@ -3,7 +3,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 
-const DEFAULT_CODEX_HOME = path.join(os.homedir(), ".codex");
+const DEFAULT_CODEX_HOME = process.env.CODEX_HOME ? path.resolve(process.env.CODEX_HOME) : path.join(os.homedir(), ".codex");
 
 function defaultPaths() {
   return {

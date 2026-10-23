@@ -328,3 +328,12 @@ test("updates role details while preserving existing comments", () => {
   assert.match(mainText, /\[agents\.default\]/);
   assert.equal(result.role.reasoningEffort, "high");
 });
+
+test("honors CODEX_HOME for macOS custom locations and isolated smoke checks", () => {
+  const { execFileSync } = require("node:child_process");
+  const customHome = path.join(os.tmpdir(), "Codex Custom Home");
+  const output = execFileSync(process.execPath, ["-e", "console.log(JSON.stringify(require('./src/config-service.cjs').defaultPaths()))"], {
+    cwd: path.join(__dirname, ".."), env: { ...process.env, CODEX_HOME: customHome }, encoding: "utf8",
+  });
+  assert.equal(JSON.parse(output).mainConfigPath, path.join(customHome, "config.toml"));
+});

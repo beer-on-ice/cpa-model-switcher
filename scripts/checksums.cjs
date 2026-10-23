@@ -1,0 +1,10 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const crypto = require("node:crypto");
+const directory = path.resolve(process.argv[2] && !["darwin", "win32"].includes(process.argv[2]) ? process.argv[2] : "release");
+const { version } = require("../package.json");
+const files = fs.readdirSync(directory).filter(name => name.startsWith(`CPA-Model-Switcher-${version}-`) && /\.(exe|dmg|zip)$/.test(name)).sort();
+if (!files.length) throw new Error(`No packaged applications in ${directory}`);
+const sums = files.map(name => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(directory, name))).digest("hex")}  ${name}`).join("\n") + "\n";
+fs.writeFileSync(path.join(directory, "SHA256SUMS.txt"), sums);
+console.log(sums);

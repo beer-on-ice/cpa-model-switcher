@@ -8,10 +8,14 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "smoke": "set CPA_SWITCHER_SMOKE=1&& electron .",
+    "smoke": "node scripts/smoke.cjs",
     "test": "node --test tests/*.test.cjs",
-    "dist": "npm test && electron-builder --win portable",
-    "pack": "electron-builder --dir"
+    "dist": "npm test && node scripts/dist.cjs",
+    "pack": "electron-builder --dir",
+    "dist:mac": "npm test && node scripts/dist.cjs darwin",
+    "dist:win": "npm test && node scripts/dist.cjs win32",
+    "checksums": "node scripts/checksums.cjs",
+    "smoke:packaged": "node scripts/packaged-smoke.cjs"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
@@ -42,6 +46,43 @@
         }
       ],
       "artifactName": "CPA-Model-Switcher-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CPA-Model-Switcher-${version}-mac-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "CPA Model Switcher",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   }
 }

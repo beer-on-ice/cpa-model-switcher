@@ -138,9 +138,15 @@ Application data:
 > [!WARNING]
 > **Apply and restart Codex** interrupts active chats and subagent tasks. Wait for important work to finish first.
 
+## macOS
+
+macOS 13+ is supported with separate Apple Silicon (`arm64`) and Intel (`x64`) DMG and ZIP downloads. Open the DMG and drag the app to Applications. These builds do not have Apple Developer ID signing or notarization; if blocked, use System Settings → Privacy & Security → Open Anyway after verifying the source.
+
+Configuration is read from `~/.codex` or `CODEX_HOME`. App settings, backups and logs are stored in `~/Library/Application Support/cpa-model-switcher/`. Saved credentials use Electron safeStorage with macOS Keychain; decryption failures stop settings loading rather than discard saved credentials. Command-S saves and Command-R refreshes models. Restart locates Codex Desktop through its app-server child and reopens the detected app bundle using Launch Services.
+
 ## Requirements
 
-- Windows 10/11 x64
+- Windows 10/11 x64 or macOS 13+ (Apple Silicon / Intel)
 - Codex Desktop installed
 - A CPA service compatible with the OpenAI Responses API
 - Optional: a WebDAV service with Basic Auth
@@ -154,7 +160,7 @@ npm run smoke
 npm start
 ```
 
-Build the portable executable:
+Build packages on the current platform (Windows portable EXE; macOS arm64/x64 DMG and ZIP):
 
 ```powershell
 npm run dist
@@ -164,15 +170,21 @@ Output:
 
 ```text
 release/CPA-Model-Switcher-<version>-x64.exe
+release/CPA-Model-Switcher-<version>-mac-arm64.dmg
+release/CPA-Model-Switcher-<version>-mac-arm64.zip
+release/CPA-Model-Switcher-<version>-mac-x64.dmg
+release/CPA-Model-Switcher-<version>-mac-x64.zip
 release/SHA256SUMS.txt
 ```
+
+`npm run dist:mac` and `npm run dist:win` explicitly select a platform and should run on the corresponding host. `npm run smoke` uses temporary configuration and a local mock CPA without touching real Codex files.
 
 ## Automated builds and releases
 
 Workflow: [`.github/workflows/release.yml`](.github/workflows/release.yml)
 
-- Manual dispatch creates a Windows x64 artifact without publishing a Release.
-- A `v*.*.*` tag tests, builds, generates SHA-256, and publishes a GitHub Release.
+- Manual dispatch creates Windows x64 and macOS arm64/x64 artifacts without publishing a Release.
+- A `v*.*.*` tag tests and builds on Windows and macOS, then aggregates all platform packages and SHA-256 checksums into one GitHub Release after all builds succeed.
 - The tag must match the version in `package.json`.
 - The workflow uses the repository `GITHUB_TOKEN`; no Personal Access Token is required.
 
